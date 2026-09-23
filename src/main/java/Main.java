@@ -4,11 +4,12 @@ import java.net.ServerSocket;
 import java.net.Socket;
 
 public class Main {
+
   public static void main(String[] args) {
+
     System.out.println("Logs from your program will appear here!");
 
     ServerSocket serverSocket = null;
-    Socket clientSocket = null;
     int port = 6379;
 
     try {
@@ -19,29 +20,43 @@ public class Main {
 
       serverSocket.setReuseAddress(true);
 
-      clientSocket = serverSocket.accept();
-      System.out.println("Client connected!");
+      // Keep accepting new clients
+      while (true) {
 
-      InputStream inputStream = clientSocket.getInputStream();
-      byte[] buffer = new byte[1024];
-      int bytesRead;
-      while ((bytesRead = inputStream.read(buffer)) != -1) {
-        clientSocket.getOutputStream().write("+PONG\r\n".getBytes());
+        Socket clientSocket = serverSocket.accept();
+        System.out.println("Client connected!");
+
+        // Create a new thread for this client
+        Thread clientThread = new Thread(() -> {
+
+          try {
+            InputStream inputStream = clientSocket.getInputStream();
+
+            byte[] buffer = new byte[1024];
+            int bytesRead;
+
+            // Keep handling commands from this client
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+
+              clientSocket.getOutputStream()
+                  .write("+PONG\r\n".getBytes());
+            }
+
+            clientSocket.close();
+            System.out.println("Client disconnected!");
+
+          } catch (IOException e) {
+            System.out.println(
+                "Client error: " + e.getMessage());
+          }
+        });
+
+        // Start handling this client independently
+        clientThread.start();
       }
-
-      System.out.println("PONG sent to client!");
 
     } catch (IOException e) {
-      System.out.println("IOException: " + e.getMessage());
-    } finally {
-      try {
-        if (clientSocket != null) {
-          clientSocket.close();
-          System.out.println("Client disconnected!");
-        }
-      } catch (IOException e) {
-        System.out.println("IOException: " + e.getMessage());
-      }
+      System.out.println("Server error: " + e.getMessage());
     }
   }
 }
