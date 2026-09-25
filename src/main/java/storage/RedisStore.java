@@ -5,20 +5,39 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class RedisStore {
 
-    private final Map<String, String> data = new ConcurrentHashMap<>();
+    private final Map<String, StoredValue> data = new ConcurrentHashMap<>();
 
     public void set(String key, String value) {
+        data.put(
+                key,
+                new StoredValue(value, null));
+    }
 
-        data.put(key, value);
+    public void set(
+            String key,
+            String value,
+            long expiryMilliseconds) {
+        long expiresAt = System.currentTimeMillis()
+                + expiryMilliseconds;
+
+        data.put(
+                key,
+                new StoredValue(value, expiresAt));
     }
 
     public String get(String key) {
 
-        return data.get(key);
-    }
+        StoredValue storedValue = data.get(key);
 
-    public boolean contains(String key) {
+        if (storedValue == null) {
+            return null;
+        }
 
-        return data.containsKey(key);
+        if (storedValue.isExpired()) {
+            data.remove(key);
+            return null;
+        }
+
+        return storedValue.getValue();
     }
 }

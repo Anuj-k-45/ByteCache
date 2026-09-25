@@ -74,41 +74,35 @@ public class ClientConnection implements Runnable {
     }
 
     private void handleCommand(
-            List<String> command,
-            OutputStream outputStream) throws IOException {
+                    List<String> command,
+                    OutputStream outputStream) throws IOException {
 
-        if (command.isEmpty()) {
-            return;
-        }
+            if (command.isEmpty()) {
+                    return;
+            }
 
-        String commandName = command.get(0);
+            System.out.println("Received command: " + command);
 
-        if (commandName.equalsIgnoreCase(
-                "PING")) {
+            String commandName = command.get(0);
 
-            handlePing(outputStream);
+            if (commandName.equalsIgnoreCase("PING")) {
 
-        } else if (commandName.equalsIgnoreCase(
-                "ECHO")) {
+                    handlePing(outputStream);
 
-            handleEcho(
-                    command,
-                    outputStream);
+            } else if (commandName.equalsIgnoreCase("ECHO")) {
 
-        } else if (commandName.equalsIgnoreCase(
-                "SET")) {
+                    handleEcho(command, outputStream);
 
-            handleSet(
-                    command,
-                    outputStream);
+            } else if (commandName.equalsIgnoreCase("SET")) {
 
-        } else if (commandName.equalsIgnoreCase(
-                "GET")) {
+                    System.out.println("Calling handleSet()");
+                    handleSet(command, outputStream);
+                    System.out.println("handleSet() finished");
 
-            handleGet(
-                    command,
-                    outputStream);
-        }
+            } else if (commandName.equalsIgnoreCase("GET")) {
+
+                    handleGet(command, outputStream);
+            }
     }
 
     private void handlePing(
@@ -135,26 +129,62 @@ public class ClientConnection implements Runnable {
     }
 
     private void handleSet(
-            List<String> command,
-            OutputStream outputStream) throws IOException {
+                    List<String> command,
+                    OutputStream outputStream) throws IOException {
 
-        if (command.size() != 3) {
-            return;
-        }
+            System.out.println("Inside handleSet()");
+            System.out.println("Command size: " + command.size());
+            System.out.println("Command: " + command);
 
-        String key = command.get(1);
+            if (command.size() < 3) {
+                    System.out.println("Not enough arguments");
+                    return;
+            }
 
-        String value = command.get(2);
+            String key = command.get(1);
+            String value = command.get(2);
 
-        store.set(
-                key,
-                value);
+            System.out.println("Key: " + key);
+            System.out.println("Value: " + value);
 
-        send(
-                outputStream,
-                "+OK\r\n");
+            if (command.size() == 3) {
+
+                    System.out.println("Normal SET");
+
+                    store.set(key, value);
+
+                    System.out.println("Store set completed");
+
+                    send(outputStream, "+OK\r\n");
+
+                    System.out.println("Response sent");
+
+                    return;
+            }
+
+            if (command.size() == 5
+                            && command.get(3).equalsIgnoreCase("PX")) {
+
+                    System.out.println("PX detected");
+
+                    long expiryMilliseconds = Long.parseLong(command.get(4));
+
+                    System.out.println(
+                                    "Expiry: " + expiryMilliseconds);
+
+                    store.set(
+                                    key,
+                                    value,
+                                    expiryMilliseconds);
+
+                    System.out.println("Store set completed");
+
+                    send(outputStream, "+OK\r\n");
+
+                    System.out.println("Response sent");
+            }
     }
-
+    
     private void handleGet(
             List<String> command,
             OutputStream outputStream) throws IOException {
