@@ -69,6 +69,8 @@ public class ClientConnection implements Runnable {
                         } catch (IOException e) {
                                 // Connection is already closed.
                         }
+
+                        System.out.println("Client disconnected!");
                 }
         }
 
@@ -239,19 +241,81 @@ public class ClientConnection implements Runnable {
 
                 StreamId entryId;
 
-                try {
+                // Auto-generate complete ID
+                if (entryIdString.equals("*")) {
 
-                        entryId = StreamId.parse(entryIdString);
+                        try {
 
-                } catch (IllegalArgumentException e) {
+                                entryId = store.generateNextStreamId(
+                                                streamKey);
 
-                        sendError(
-                                        outputStream,
-                                        "Invalid stream ID");
+                        } catch (IllegalArgumentException e) {
 
-                        return;
+                                sendError(
+                                                outputStream,
+                                                e.getMessage());
+
+                                return;
+                        }
+
+                        // Auto-generate sequence number
+                } else if (entryIdString.endsWith("-*")) {
+
+                        String millisecondsPart = entryIdString.substring(
+                                        0,
+                                        entryIdString.length() - 2);
+
+                        long millisecondsTime;
+
+                        try {
+
+                                millisecondsTime = Long.parseLong(
+                                                millisecondsPart);
+
+                        } catch (NumberFormatException e) {
+
+                                sendError(
+                                                outputStream,
+                                                "Invalid stream ID");
+
+                                return;
+                        }
+
+                        try {
+
+                                entryId = store.generateStreamId(
+                                                streamKey,
+                                                millisecondsTime);
+
+                        } catch (IllegalArgumentException e) {
+
+                                sendError(
+                                                outputStream,
+                                                e.getMessage());
+
+                                return;
+                        }
+
+                        // Explicit ID
+                } else {
+
+                        try {
+
+                                entryId = StreamId.parse(
+                                                entryIdString);
+
+                        } catch (IllegalArgumentException e) {
+
+                                sendError(
+                                                outputStream,
+                                                "Invalid stream ID");
+
+                                return;
+                        }
                 }
 
+                // After the ID, fields and values
+                // must come in pairs.
                 if ((command.size() - 3) % 2 != 0) {
                         return;
                 }
@@ -288,11 +352,13 @@ public class ClientConnection implements Runnable {
                         return;
                 }
 
+                // XADD returns the generated/explicit
+                // entry ID as a RESP bulk string.
                 sendBulkString(
                                 outputStream,
                                 entryId.toString());
         }
-
+        
         private void send(
                         OutputStream outputStream,
                         String response) throws IOException {

@@ -98,4 +98,66 @@ public class RedisStore {
 
         return "none";
     }
+
+    public StreamId generateStreamId(
+            String key,
+            long millisecondsTime) {
+
+        Object storedObject = data.get(key);
+
+        RedisStream stream;
+
+        if (storedObject == null) {
+
+            stream = new RedisStream();
+
+            data.put(
+                    key,
+                    stream);
+
+        } else if (storedObject instanceof RedisStream) {
+
+            stream = (RedisStream) storedObject;
+
+        } else {
+
+            throw new IllegalArgumentException(
+                    "WRONGTYPE Operation against a key holding the wrong kind of value");
+        }
+
+        long sequenceNumber = stream.getNextSequenceNumber(
+                millisecondsTime);
+
+        return new StreamId(
+                millisecondsTime,
+                sequenceNumber);
+    }
+    
+    public StreamId generateNextStreamId(
+            String key) {
+
+        Object storedObject = data.get(key);
+
+        RedisStream stream;
+
+        if (storedObject == null) {
+
+            stream = new RedisStream();
+
+            data.put(
+                    key,
+                    stream);
+
+        } else if (storedObject instanceof RedisStream) {
+
+            stream = (RedisStream) storedObject;
+
+        } else {
+
+            throw new IllegalArgumentException(
+                    "WRONGTYPE Operation against a key holding the wrong kind of value");
+        }
+
+        return stream.generateNextId();
+    }
 }
