@@ -1,5 +1,7 @@
 package storage;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -132,7 +134,7 @@ public class RedisStore {
                 millisecondsTime,
                 sequenceNumber);
     }
-    
+
     public StreamId generateNextStreamId(
             String key) {
 
@@ -159,5 +161,39 @@ public class RedisStore {
         }
 
         return stream.generateNextId();
+    }
+
+    public List<StreamEntry> getStreamRange(
+            String key,
+            StreamId startId,
+            StreamId endId) {
+
+        Object storedObject = data.get(key);
+
+        if (!(storedObject instanceof RedisStream)) {
+            return new ArrayList<>();
+        }
+
+        RedisStream stream = (RedisStream) storedObject;
+
+        return stream.getRange(
+                startId,
+                endId);
+    }
+
+    public List<StreamEntry> getStreamEntriesAfter(
+            String key,
+            StreamId startId) {
+
+        Object storedObject = data.get(key);
+
+        if (!(storedObject instanceof RedisStream)) {
+            return new ArrayList<>();
+        }
+
+        RedisStream stream = (RedisStream) storedObject;
+
+        return stream.getEntriesAfter(
+                startId);
     }
 }

@@ -99,4 +99,41 @@ public class RedisStream {
 
         return -1;
     }
+
+    public List<StreamEntry> getRange(
+            StreamId startId,
+            StreamId endId) {
+
+        List<StreamEntry> result = new ArrayList<>();
+
+        for (StreamEntry entry : entries) {
+
+            StreamId entryId = entry.getId();
+
+            if (entryId.compareTo(startId) >= 0
+                    && entryId.compareTo(endId) <= 0) {
+
+                result.add(entry);
+            }
+        }
+
+        return result;
+    }
+
+    public List<StreamEntry> getEntriesAfter(
+            StreamId startId) {
+
+        List<StreamEntry> result = new ArrayList<>();
+
+        for (StreamEntry entry : entries) {
+
+            StreamId entryId = entry.getId();
+
+            if (entryId.compareTo(startId) > 0) {
+                result.add(entry);
+            }
+        }
+
+        return result;
+    }
 }

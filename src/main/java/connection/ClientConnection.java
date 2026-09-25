@@ -5,7 +5,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -116,6 +116,14 @@ public class ClientConnection implements Runnable {
                         handleXAdd(
                                         command,
                                         outputStream);
+                } else if (commandName.equalsIgnoreCase("XRANGE")) {
+
+                        handleXRange(command, outputStream);
+
+                } else if (commandName.equalsIgnoreCase("XREAD")) {
+
+                        handleXRead(command, outputStream);
+
                 }
         }
 
@@ -320,7 +328,7 @@ public class ClientConnection implements Runnable {
                         return;
                 }
 
-                Map<String, String> fields = new HashMap<>();
+                Map<String, String> fields = new LinkedHashMap<>();
 
                 for (int i = 3; i < command.size(); i += 2) {
 
@@ -358,7 +366,48 @@ public class ClientConnection implements Runnable {
                                 outputStream,
                                 entryId.toString());
         }
-        
+
+        private void handleXRange(
+                        List<String> command,
+                        OutputStream outputStream) throws IOException {
+
+                if (command.size() != 4) {
+                        return;
+                }
+
+                String key = command.get(1);
+                String startIdString = command.get(2);
+                String endIdString = command.get(3);
+
+                StreamId startId;
+                StreamId endId;
+
+                try {
+                        startId = parseRangeStartId(
+                                        startIdString);
+
+                        endId = parseRangeEndId(
+                                        endIdString);
+
+                } catch (IllegalArgumentException e) {
+
+                        sendError(
+                                        outputStream,
+                                        "Invalid stream ID");
+
+                        return;
+                }
+
+                List<StreamEntry> entries = store.getStreamRange(
+                                key,
+                                startId,
+                                endId);
+
+                sendStreamEntries(
+                                outputStream,
+                                entries);
+        }
+
         private void send(
                         OutputStream outputStream,
                         String response) throws IOException {
@@ -395,6 +444,47 @@ public class ClientConnection implements Runnable {
                 outputStream.flush();
         }
 
+        private void handleXRead(
+                        List<String> command,
+                        OutputStream outputStream) throws IOException {
+
+                if (command.size() != 4) {
+                        return;
+                }
+
+                if (!command.get(1).equalsIgnoreCase("STREAMS")) {
+                        return;
+                }
+
+                String key = command.get(2);
+
+                String startIdString = command.get(3);
+
+                StreamId startId;
+
+                try {
+                        startId = StreamId.parse(
+                                        startIdString);
+
+                } catch (IllegalArgumentException e) {
+
+                        sendError(
+                                        outputStream,
+                                        "Invalid stream ID");
+
+                        return;
+                }
+
+                List<StreamEntry> entries = store.getStreamEntriesAfter(
+                                key,
+                                startId);
+
+                sendXReadResponse(
+                                outputStream,
+                                key,
+                                entries);
+        }
+
         private void sendError(
                         OutputStream outputStream,
                         String message) throws IOException {
@@ -402,5 +492,132 @@ public class ClientConnection implements Runnable {
                 send(
                                 outputStream,
                                 "-ERR " + message + "\r\n");
+        }
+
+        private StreamId parseRangeStartId(
+                        String id) {
+
+                if (id.equals("-")) {
+                        return new StreamId(
+                                        0,
+                                        0);
+                }
+
+                if (id.contains("-")) {
+                        return StreamId.parse(id);
+                }
+
+                long millisecondsTime = Long.parseLong(id);
+
+                return new StreamId(
+                                millisecondsTime,
+                                0);
+        }
+
+        private StreamId parseRangeEndId(
+                        String id) {
+
+                if (id.equals("+")) {
+                        return new StreamId(
+                                        Long.MAX_VALUE,
+                                        Long.MAX_VALUE);
+                }
+
+                if (id.contains("-")) {
+                        return StreamId.parse(id);
+                }
+
+                long millisecondsTime = Long.parseLong(id);
+
+                return new StreamId(
+                                millisecondsTime,
+                                Long.MAX_VALUE);
+        }
+
+        private void sendStreamEntries(
+                        OutputStream outputStream,
+                        List<StreamEntry> entries) throws IOException {
+
+                send(
+                                outputStream,
+                                "*" + entries.size() + "\r\n");
+
+                for (StreamEntry entry : entries) {
+
+                        send(
+                                        outputStream,
+                                        "*2\r\n");
+
+                        sendBulkString(
+                                        outputStream,
+                                        entry.getId().toString());
+
+                        Map<String, String> fields = entry.getFields();
+
+                        send(
+                                        outputStream,
+                                        "*" + (fields.size() * 2) + "\r\n");
+
+                        for (Map.Entry<String, String> field : fields.entrySet()) {
+
+                                sendBulkString(
+                                                outputStream,
+                                                field.getKey());
+
+                                sendBulkString(
+                                                outputStream,
+                                                field.getValue());
+                        }
+                }
+        }
+
+        private void sendXReadResponse(
+                        OutputStream outputStream,
+                        String key,
+                        List<StreamEntry> entries) throws IOException {
+
+                send(
+                                outputStream,
+                                "*1\r\n");
+
+                send(
+                                outputStream,
+                                "*2\r\n");
+
+                sendBulkString(
+                                outputStream,
+                                key);
+
+                send(
+                                outputStream,
+                                "*" + entries.size() + "\r\n");
+
+                for (StreamEntry entry : entries) {
+
+                        send(
+                                        outputStream,
+                                        "*2\r\n");
+
+                        sendBulkString(
+                                        outputStream,
+                                        entry.getId().toString());
+
+                        Map<String, String> fields = entry.getFields();
+
+                        send(
+                                        outputStream,
+                                        "*" + (fields.size() * 2) + "\r\n");
+
+                        for (Map.Entry<String, String> field : fields.entrySet()) {
+
+                                sendBulkString(
+                                                outputStream,
+                                                field.getKey());
+
+                                sendBulkString(
+                                                outputStream,
+                                                field.getValue());
+                        }
+                }
         }
 }
