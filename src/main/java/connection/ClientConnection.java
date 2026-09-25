@@ -5,241 +5,336 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import protocol.RespParser;
 import storage.RedisStore;
+import storage.StreamEntry;
+import storage.StreamId;
 
 public class ClientConnection implements Runnable {
 
-    private final Socket socket;
+        private final Socket socket;
+        private final RespParser parser;
+        private final RedisStore store;
 
-    private final RespParser parser;
+        public ClientConnection(
+                        Socket socket,
+                        RedisStore store) {
 
-    private final RedisStore store;
+                this.socket = socket;
+                this.store = store;
+                this.parser = new RespParser();
+        }
 
-    public ClientConnection(
-            Socket socket,
-            RedisStore store) {
-        this.socket = socket;
-        this.store = store;
-        this.parser = new RespParser();
-    }
+        @Override
+        public void run() {
 
-    @Override
-    public void run() {
+                try (
+                                InputStream inputStream = socket.getInputStream();
+                                OutputStream outputStream = socket.getOutputStream()) {
 
-        try (
-                InputStream inputStream = socket.getInputStream();
+                        byte[] buffer = new byte[1024];
 
-                OutputStream outputStream = socket.getOutputStream()) {
+                        int bytesRead;
 
-            byte[] buffer = new byte[1024];
+                        while ((bytesRead = inputStream.read(buffer)) != -1) {
 
-            int bytesRead;
+                                parser.feed(
+                                                buffer,
+                                                bytesRead);
 
-            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                                List<List<String>> commands = parser.getCompleteCommands();
 
-                parser.feed(
-                        buffer,
-                        bytesRead);
+                                for (List<String> command : commands) {
 
-                List<List<String>> commands = parser.getCompleteCommands();
+                                        handleCommand(
+                                                        command,
+                                                        outputStream);
+                                }
+                        }
 
-                for (List<String> command : commands) {
+                } catch (IOException e) {
 
-                    handleCommand(
-                            command,
-                            outputStream);
+                        System.out.println(
+                                        "Client error: "
+                                                        + e.getMessage());
+
+                } finally {
+
+                        try {
+                                socket.close();
+                        } catch (IOException e) {
+                                // Connection is already closed.
+                        }
                 }
-            }
-
-        } catch (IOException e) {
-
-            System.out.println(
-                    "Client error: "
-                            + e.getMessage());
-
-        } finally {
-
-            try {
-                socket.close();
-            } catch (IOException e) {
-                // Connection is already closed.
-            }
-
-            System.out.println(
-                    "Client disconnected!");
-        }
-    }
-
-    private void handleCommand(
-                    List<String> command,
-                    OutputStream outputStream) throws IOException {
-
-            if (command.isEmpty()) {
-                    return;
-            }
-
-            System.out.println("Received command: " + command);
-
-            String commandName = command.get(0);
-
-            if (commandName.equalsIgnoreCase("PING")) {
-
-                    handlePing(outputStream);
-
-            } else if (commandName.equalsIgnoreCase("ECHO")) {
-
-                    handleEcho(command, outputStream);
-
-            } else if (commandName.equalsIgnoreCase("SET")) {
-
-                    System.out.println("Calling handleSet()");
-                    handleSet(command, outputStream);
-                    System.out.println("handleSet() finished");
-
-            } else if (commandName.equalsIgnoreCase("GET")) {
-
-                    handleGet(command, outputStream);
-            }
-    }
-
-    private void handlePing(
-            OutputStream outputStream) throws IOException {
-
-        send(
-                outputStream,
-                "+PONG\r\n");
-    }
-
-    private void handleEcho(
-            List<String> command,
-            OutputStream outputStream) throws IOException {
-
-        if (command.size() != 2) {
-            return;
         }
 
-        String argument = command.get(1);
+        private void handleCommand(
+                        List<String> command,
+                        OutputStream outputStream) throws IOException {
 
-        sendBulkString(
-                outputStream,
-                argument);
-    }
+                if (command.isEmpty()) {
+                        return;
+                }
 
-    private void handleSet(
-                    List<String> command,
-                    OutputStream outputStream) throws IOException {
+                String commandName = command.get(0);
 
-            System.out.println("Inside handleSet()");
-            System.out.println("Command size: " + command.size());
-            System.out.println("Command: " + command);
+                if (commandName.equalsIgnoreCase("PING")) {
 
-            if (command.size() < 3) {
-                    System.out.println("Not enough arguments");
-                    return;
-            }
+                        handlePing(outputStream);
 
-            String key = command.get(1);
-            String value = command.get(2);
+                } else if (commandName.equalsIgnoreCase("ECHO")) {
 
-            System.out.println("Key: " + key);
-            System.out.println("Value: " + value);
+                        handleEcho(
+                                        command,
+                                        outputStream);
 
-            if (command.size() == 3) {
+                } else if (commandName.equalsIgnoreCase("SET")) {
 
-                    System.out.println("Normal SET");
+                        handleSet(
+                                        command,
+                                        outputStream);
 
-                    store.set(key, value);
+                } else if (commandName.equalsIgnoreCase("GET")) {
 
-                    System.out.println("Store set completed");
+                        handleGet(
+                                        command,
+                                        outputStream);
 
-                    send(outputStream, "+OK\r\n");
+                } else if (commandName.equalsIgnoreCase("TYPE")) {
 
-                    System.out.println("Response sent");
+                        handleType(
+                                        command,
+                                        outputStream);
+                } else if (commandName.equalsIgnoreCase("XADD")) {
 
-                    return;
-            }
-
-            if (command.size() == 5
-                            && command.get(3).equalsIgnoreCase("PX")) {
-
-                    System.out.println("PX detected");
-
-                    long expiryMilliseconds = Long.parseLong(command.get(4));
-
-                    System.out.println(
-                                    "Expiry: " + expiryMilliseconds);
-
-                    store.set(
-                                    key,
-                                    value,
-                                    expiryMilliseconds);
-
-                    System.out.println("Store set completed");
-
-                    send(outputStream, "+OK\r\n");
-
-                    System.out.println("Response sent");
-            }
-    }
-    
-    private void handleGet(
-            List<String> command,
-            OutputStream outputStream) throws IOException {
-
-        if (command.size() != 2) {
-            return;
+                        handleXAdd(
+                                        command,
+                                        outputStream);
+                }
         }
 
-        String key = command.get(1);
+        private void handlePing(
+                        OutputStream outputStream) throws IOException {
 
-        String value = store.get(key);
-
-        if (value == null) {
-
-            send(
-                    outputStream,
-                    "$-1\r\n");
-
-            return;
+                send(
+                                outputStream,
+                                "+PONG\r\n");
         }
 
-        sendBulkString(
-                outputStream,
-                value);
-    }
+        private void handleEcho(
+                        List<String> command,
+                        OutputStream outputStream) throws IOException {
 
-    private void send(
-            OutputStream outputStream,
-            String response) throws IOException {
+                if (command.size() != 2) {
+                        return;
+                }
 
-        outputStream.write(
-                response.getBytes(
-                        StandardCharsets.UTF_8));
-    }
+                String argument = command.get(1);
 
-    private void sendBulkString(
-            OutputStream outputStream,
-            String value) throws IOException {
+                sendBulkString(
+                                outputStream,
+                                argument);
+        }
 
-        byte[] valueBytes = value.getBytes(
-                StandardCharsets.UTF_8);
+        private void handleSet(
+                        List<String> command,
+                        OutputStream outputStream) throws IOException {
 
-        String header = "$"
-                + valueBytes.length
-                + "\r\n";
+                if (command.size() < 3) {
+                        return;
+                }
 
-        outputStream.write(
-                header.getBytes(
-                        StandardCharsets.UTF_8));
+                String key = command.get(1);
+                String value = command.get(2);
 
-        outputStream.write(
-                valueBytes);
+                // Normal SET
+                if (command.size() == 3) {
 
-        outputStream.write(
-                "\r\n".getBytes(
-                        StandardCharsets.UTF_8));
-    }
+                        store.set(
+                                        key,
+                                        value);
+
+                        send(
+                                        outputStream,
+                                        "+OK\r\n");
+
+                        return;
+                }
+
+                // SET with PX option
+                if (command.size() == 5
+                                && command.get(3).equalsIgnoreCase("PX")) {
+
+                        long expiryMilliseconds = Long.parseLong(command.get(4));
+
+                        store.set(
+                                        key,
+                                        value,
+                                        expiryMilliseconds);
+
+                        send(
+                                        outputStream,
+                                        "+OK\r\n");
+                }
+        }
+
+        private void handleGet(
+                        List<String> command,
+                        OutputStream outputStream) throws IOException {
+
+                if (command.size() != 2) {
+                        return;
+                }
+
+                String key = command.get(1);
+
+                String value = store.get(key);
+
+                if (value == null) {
+
+                        send(
+                                        outputStream,
+                                        "$-1\r\n");
+
+                        return;
+                }
+
+                sendBulkString(
+                                outputStream,
+                                value);
+        }
+
+        private void handleType(
+                        List<String> command,
+                        OutputStream outputStream) throws IOException {
+
+                if (command.size() != 2) {
+                        return;
+                }
+
+                String key = command.get(1);
+
+                String type = store.getType(key);
+
+                send(
+                                outputStream,
+                                "+" + type + "\r\n");
+        }
+
+        private void handleXAdd(
+                        List<String> command,
+                        OutputStream outputStream) throws IOException {
+
+                if (command.size() < 5) {
+                        return;
+                }
+
+                String streamKey = command.get(1);
+
+                String entryIdString = command.get(2);
+
+                StreamId entryId;
+
+                try {
+
+                        entryId = StreamId.parse(entryIdString);
+
+                } catch (IllegalArgumentException e) {
+
+                        sendError(
+                                        outputStream,
+                                        "Invalid stream ID");
+
+                        return;
+                }
+
+                if ((command.size() - 3) % 2 != 0) {
+                        return;
+                }
+
+                Map<String, String> fields = new HashMap<>();
+
+                for (int i = 3; i < command.size(); i += 2) {
+
+                        String field = command.get(i);
+
+                        String value = command.get(i + 1);
+
+                        fields.put(
+                                        field,
+                                        value);
+                }
+
+                StreamEntry entry = new StreamEntry(
+                                entryId,
+                                fields);
+
+                try {
+
+                        store.addStreamEntry(
+                                        streamKey,
+                                        entry);
+
+                } catch (IllegalArgumentException e) {
+
+                        sendError(
+                                        outputStream,
+                                        e.getMessage());
+
+                        return;
+                }
+
+                sendBulkString(
+                                outputStream,
+                                entryId.toString());
+        }
+
+        private void send(
+                        OutputStream outputStream,
+                        String response) throws IOException {
+
+                outputStream.write(
+                                response.getBytes(
+                                                StandardCharsets.UTF_8));
+
+                outputStream.flush();
+        }
+
+        private void sendBulkString(
+                        OutputStream outputStream,
+                        String value) throws IOException {
+
+                byte[] valueBytes = value.getBytes(
+                                StandardCharsets.UTF_8);
+
+                String header = "$"
+                                + valueBytes.length
+                                + "\r\n";
+
+                outputStream.write(
+                                header.getBytes(
+                                                StandardCharsets.UTF_8));
+
+                outputStream.write(
+                                valueBytes);
+
+                outputStream.write(
+                                "\r\n".getBytes(
+                                                StandardCharsets.UTF_8));
+
+                outputStream.flush();
+        }
+
+        private void sendError(
+                        OutputStream outputStream,
+                        String message) throws IOException {
+
+                send(
+                                outputStream,
+                                "-ERR " + message + "\r\n");
+        }
 }
