@@ -1,7 +1,7 @@
 # ⚡ ByteCache — A Redis Server Built From Raw TCP Sockets
 
 <p align="center">
-  <img src="./assets/Banner.png" alt="ByteCache Banner" width="100%" />
+  <img src="./assets/banner.png" alt="ByteCache Banner" width="100%" />
 </p>
 
 <p align="center">
