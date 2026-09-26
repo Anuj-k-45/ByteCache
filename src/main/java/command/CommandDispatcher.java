@@ -1,5 +1,6 @@
 package command;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -16,6 +17,7 @@ import command.stream.XRangeCommand;
 import command.stream.XReadCommand;
 import command.string.GetCommand;
 import command.string.SetCommand;
+import command.transaction.DiscardCommand;
 import command.transaction.ExecCommand;
 import command.transaction.MultiCommand;
 import connection.ClientContext;
@@ -38,7 +40,58 @@ public class CommandDispatcher {
         commands.put("INCR", new IncrCommand());
         commands.put("MULTI", new MultiCommand());
         commands.put("EXEC", new ExecCommand());
+        commands.put("DISCARD", new DiscardCommand());
     }
+
+    private void executeTransaction(
+        OutputStream outputStream,
+        RedisStore store,
+        ClientContext context) throws IOException {
+
+    if (!context.isInTransaction()) {
+        String response =
+                "-ERR EXEC without MULTI\r\n";
+
+        outputStream.write(
+                response.getBytes(StandardCharsets.UTF_8));
+
+        outputStream.flush();
+        return;
+    }
+
+    List<List<String>> queuedCommands =
+            context.getQueuedCommands();
+
+    List<byte[]> responses = new java.util.ArrayList<>();
+
+    for (List<String> queuedCommand : queuedCommands) {
+
+        ByteArrayOutputStream commandResponse =
+                new ByteArrayOutputStream();
+
+        executeQueuedCommand(
+                queuedCommand,
+                commandResponse,
+                store,
+                context);
+
+        responses.add(commandResponse.toByteArray());
+    }
+
+    context.endTransaction();
+
+    String header =
+            "*" + responses.size() + "\r\n";
+
+    outputStream.write(
+            header.getBytes(StandardCharsets.UTF_8));
+
+    for (byte[] response : responses) {
+        outputStream.write(response);
+    }
+
+    outputStream.flush();
+}
 
     public void dispatch(
             List<String> command,
@@ -61,6 +114,61 @@ public class CommandDispatcher {
                     response.getBytes(StandardCharsets.UTF_8));
 
             outputStream.flush();
+            return;
+        }
+
+        if (context.isInTransaction()
+                && !commandName.equals("EXEC")
+                && !commandName.equals("MULTI")
+                && !commandName.equals("DISCARD")) {
+
+            context.queueCommand(command);
+
+            outputStream.write(
+                    "+QUEUED\r\n".getBytes(StandardCharsets.UTF_8));
+
+            outputStream.flush();
+
+            return;
+        }
+
+        if (commandName.equals("EXEC")) {
+
+            executeTransaction(
+                    outputStream,
+                    store,
+                    context);
+
+            return;
+        }
+
+        handler.execute(
+                command,
+                outputStream,
+                store,
+                context);
+    }
+
+    public void executeQueuedCommand(
+            List<String> command,
+            OutputStream outputStream,
+            RedisStore store,
+            ClientContext context) throws IOException {
+
+        if (command.isEmpty()) {
+            return;
+        }
+
+        String commandName = command.get(0).toUpperCase();
+
+        Command handler = commands.get(commandName);
+
+        if (handler == null) {
+            String response = "-ERR unknown command '" + command.get(0) + "'\r\n";
+
+            outputStream.write(
+                    response.getBytes(StandardCharsets.UTF_8));
+
             return;
         }
 

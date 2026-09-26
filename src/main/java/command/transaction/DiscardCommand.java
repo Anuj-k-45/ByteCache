@@ -9,7 +9,7 @@ import command.Command;
 import connection.ClientContext;
 import storage.RedisStore;
 
-public class ExecCommand implements Command {
+public class DiscardCommand implements Command {
 
     @Override
     public void execute(
@@ -18,11 +18,22 @@ public class ExecCommand implements Command {
             RedisStore store,
             ClientContext context) throws IOException {
 
-        String response = "-ERR EXEC without MULTI\r\n";
+        if (!context.isInTransaction()) {
+            String response = "-ERR DISCARD without MULTI\r\n";
+
+            outputStream.write(
+                    response.getBytes(StandardCharsets.UTF_8));
+            outputStream.flush();
+
+            return;
+        }
+
+        context.endTransaction();
+
+        String response = "+OK\r\n";
 
         outputStream.write(
                 response.getBytes(StandardCharsets.UTF_8));
-
         outputStream.flush();
     }
 }
