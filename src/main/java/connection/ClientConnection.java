@@ -90,7 +90,9 @@ public class ClientConnection implements Runnable {
                                 || commandName.equals("TYPE")
                                 || commandName.equals("XADD")
                                 || commandName.equals("XRANGE")
-                                || commandName.equals("XREAD")) {
+                                || commandName.equals("XREAD")
+                                || commandName.equals("INCR")
+                        ) {
 
                         commandDispatcher.dispatch(
                                         command,

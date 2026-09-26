@@ -9,6 +9,7 @@ import java.util.Map;
 import command.generic.EchoCommand;
 import command.generic.PingCommand;
 import command.generic.TypeCommand;
+import command.numeric.IncrCommand;
 import command.stream.XAddCommand;
 import command.stream.XRangeCommand;
 import command.stream.XReadCommand;
@@ -30,6 +31,7 @@ public class CommandDispatcher {
         commands.put("XADD", new XAddCommand());
         commands.put("XRANGE", new XRangeCommand());
         commands.put("XREAD", new XReadCommand());
+        commands.put("INCR", new IncrCommand());
     }
 
     public void dispatch(
