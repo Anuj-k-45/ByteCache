@@ -1,963 +1,443 @@
-# ⚡ ByteCache
+# ⚡ ByteCache — A Redis Server Built From Raw TCP Sockets
 
-**A Redis-inspired in-memory data store built from raw TCP sockets — no Spring Boot, no Redis server underneath, no networking black boxes.**
+<p align="center">
+  <img src="./assets/Banner.png" alt="ByteCache Banner" width="100%" />
+</p>
 
-[![Java](https://img.shields.io/badge/Java-25-orange?logo=openjdk)](https://openjdk.org/)
-[![Build](https://img.shields.io/badge/build-Maven-blue?logo=apachemaven)](https://maven.apache.org/)
-[![Protocol](https://img.shields.io/badge/protocol-RESP2-red)]
-[![Status](https://img.shields.io/badge/status-active%20development-yellow)]
+<p align="center">
+  <img src="https://img.shields.io/badge/Java-25-orange?style=for-the-badge&logo=openjdk&logoColor=white" />
+  <img src="https://img.shields.io/badge/Build-Maven-blue?style=for-the-badge&logo=apachemaven&logoColor=white" />
+  <img src="https://img.shields.io/badge/Protocol-RESP2-red?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Framework-None-critical?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Concurrency-Thread--per--Connection-blueviolet?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/status-active%20development-yellow?style=for-the-badge" />
+</p>
 
-> ByteCache is a from-scratch implementation of the core ideas behind Redis, built to understand what actually happens between a client sending `SET`, `GET`, or `XADD` and data being stored in memory.
+> **ByteCache** is a Redis-inspired, in-memory data store built entirely from **raw Java sockets** — no Redis binary underneath, no Spring Boot, no networking library doing the hard part for you. It speaks real **RESP2** well enough that an unmodified `redis-cli` can talk to it, handles **persistent, concurrent client connections** with a hand-rolled thread-per-connection model, and implements **Redis Streams** — ordered entries, structured IDs, monotonic validation — from first principles.
 
----
+> [!NOTE]
+> This is a systems-engineering showcase, not a Redis replacement. The interesting part isn't the feature list — it's that every layer between "a client typed `SET`" and "a value sits in memory" was written and understood by hand: socket lifecycle, byte-stream framing, protocol parsing, command dispatch, concurrent storage.
 
-## Table of Contents
-
-- [Why This Project Exists](#why-this-project-exists)
-- [What ByteCache Currently Implements](#what-bytecache-currently-implements)
-- [Architecture](#architecture)
-- [Request Lifecycle](#request-lifecycle)
-- [Storage Model](#storage-model)
-- [Redis Streams Internals](#redis-streams-internals)
-- [RESP Protocol](#resp-protocol)
-- [Concurrency Model](#concurrency-model)
-- [Supported Commands](#supported-commands)
-- [Engineering Deep Dives](#engineering-deep-dives)
-- [Current Status](#current-status)
-- [Project Structure](#project-structure)
-- [Getting Started](#getting-started)
-- [Testing & Verification](#testing--verification)
-- [Design Principles](#design-principles)
-- [Roadmap](#roadmap)
-- [What I'm Learning](#what-im-learning)
-- [Disclaimer](#disclaimer)
+> [!WARNING]
+> ByteCache is actively evolving. New commands, data types, and a persistence layer are in progress — see the [Roadmap](#-roadmap) below for what's built today versus what's planned.
 
 ---
 
-## Why This Project Exists
+## ⭐ Support
 
-Redis is usually consumed through a client library:
+If this project helped you understand what's really happening underneath Redis — or underneath any client-server system — consider giving it a star. It genuinely helps.
 
-```text
-Application
-    │
-    └── redis.set("user:42", "Anuj")
-             │
-             ▼
-          Redis
+---
+
+## 📖 Table of Contents
+
+- [🚀 Why This Project Exists](#-why-this-project-exists)
+- [✨ Key Features](#-key-features)
+- [🏗️ High-Level Architecture](#️-high-level-architecture)
+- [🔁 Request Lifecycle](#-request-lifecycle)
+- [🗄️ Storage Model](#️-storage-model)
+- [🌊 Redis Streams Internals](#-redis-streams-internals)
+- [📡 RESP Protocol](#-resp-protocol)
+- [🧵 Concurrency Model](#-concurrency-model)
+- [🔌 Supported Commands](#-supported-commands)
+- [🔍 Engineering Deep Dives](#-engineering-deep-dives)
+- [📂 Project Structure](#-project-structure)
+- [⚙️ How to Run](#️-how-to-run)
+- [🧪 Testing & Verification](#-testing--verification)
+- [🧭 Design Principles](#-design-principles)
+- [🔮 Future Vision — Planned Architecture](#-future-vision--planned-architecture)
+- [🗺️ Roadmap](#️-roadmap)
+- [🏆 Engineering Highlights](#-engineering-highlights)
+- [📚 What I'm Learning](#-what-im-learning)
+- [🤝 Contribution](#-contribution)
+- [⚠️ Disclaimer](#️-disclaimer)
+- [📜 License](#-license)
+
+---
+
+## 🚀 Why This Project Exists
+
+Most developers only ever meet Redis through a client library:
+
+```java
+redis.set("user:42", "Anuj");
 ```
 
-That is convenient, but it hides most of the interesting systems work.
+Clean. Convenient. And it hides almost everything interesting.
 
-ByteCache deliberately starts much lower:
+ByteCache deliberately starts several layers lower — at the point where none of that convenience exists yet:
 
-```text
-TCP connection
-      ↓
-raw bytes
-      ↓
-RESP parsing
-      ↓
-commands
-      ↓
-command execution
-      ↓
-in-memory data structures
+```
+TCP connection → raw bytes → RESP parsing → commands → execution → in-memory data structures
 ```
 
-The goal is not to replace Redis.
-
-The goal is to understand, by implementing it, questions such as:
+Building it means confronting the questions a framework usually answers *for* you:
 
 - What does a Redis command actually look like on the wire?
-- How does a Java `Socket` expose a TCP byte stream?
-- Why can't one `read()` call be treated as one command?
-- How can a server handle multiple commands over one persistent connection?
-- How do different Redis data types fit into one key-value store?
-- How are stream IDs ordered and automatically generated?
-- What happens when multiple client threads access the same in-memory state?
-- Where does TTL information actually live?
-- What responsibilities belong to networking, protocol parsing, command execution, and storage?
+- Why can't a single `Socket.read()` call be treated as a single command?
+- How does one server handle hundreds of persistent client connections at once?
+- Where does a key's TTL actually **live**, and when is it checked?
+- How are Redis Stream IDs ordered, validated, and auto-generated?
+- What breaks when two threads touch the same in-memory map at the same time?
 
-This project is intentionally built without Spring Boot so that the networking and protocol layers remain visible.
+There's no Spring Boot here on purpose — networking and protocol handling are the point, not implementation details hidden behind an annotation.
 
----
-
-# What ByteCache Currently Implements
-
-ByteCache has progressed beyond a basic TCP echo server and currently implements a working subset of Redis-like behavior.
-
-| Area | Current implementation |
-|---|---|
-| Transport | TCP via Java `ServerSocket` / `Socket` |
-| Connection handling | Persistent client connections |
-| Multi-client support | Thread-per-connection |
-| Wire protocol | RESP-style request parsing and RESP responses |
-| Request parsing | Incremental buffering across socket reads |
-| Commands | `PING`, `ECHO`, `SET`, `GET`, `TYPE`, `XADD` |
-| Strings | In-memory string values |
-| Expiration | `SET ... PX <milliseconds>` with lazy expiration |
-| Data types | String + Stream |
-| Streams | Ordered `StreamEntry` objects |
-| Stream IDs | Explicit IDs, `milliseconds-*`, and `*` |
-| Stream validation | Monotonic ID validation |
-| Shared state | `ConcurrentHashMap` |
-| Errors | RESP error responses for supported invalid operations |
-| External client | Tested with `redis-cli` over TCP |
-| Framework | None — plain Java networking APIs |
-
-The implementation is intentionally smaller than Redis itself. The focus is on understanding the mechanisms behind the features rather than reproducing the entire Redis codebase.
+<p align="center">
+  <img src="./assets/Overall_Concept.png" alt="Concept Diagram — Client to Server to Store" width="85%" />
+  <br/>
+  <i>Client → TCP socket → RESP parser → command dispatch → in-memory store, with every arrow hand-implemented</i>
+</p>
 
 ---
 
-# Architecture
+## ✨ Key Features
 
-The current architecture separates the major responsibilities without introducing abstractions that the project does not yet need.
+- ✅ **Zero frameworks** — pure `java.net`, no Netty, no Spring, no Redis client library underneath
+- ✅ **Real wire compatibility** — speaks RESP2 well enough for an unmodified `redis-cli` session to work against it
+- ✅ **Hand-rolled protocol parsing** — incremental buffering across partial reads, correctly splits pipelined commands arriving in a single read
+- ✅ **Thread-per-connection concurrency** — every client gets its own thread; all threads share one `ConcurrentHashMap`-backed store
+- ✅ **TTL with lazy expiration** — `SET ... PX <ms>` support with expiry checked (and enforced) at read time, no background sweeper
+- ✅ **Redis Streams from scratch** — `XADD` with explicit IDs, partially generated IDs (`ms-*`), and fully generated IDs (`*`), with monotonic ordering enforced on every insert
+- ✅ **Polymorphic in-memory storage** — one `Map<String, Object>` cleanly hosting multiple Redis data types (`StoredValue`, `RedisStream`) behind a single key namespace
+- ✅ **Verified against a real client** — tested via actual `redis-cli` TCP sessions, not just unit tests against Java method calls
+- ✅ **CodeCrafters-guided, independently built** — uses the *Build Your Own Redis* challenge as a progression map and compatibility check, not a source of copied solutions
 
-```text
-                         ┌─────────────────────────────┐
-                         │            Client           │
-                         │      redis-cli / TCP        │
-                         └──────────────┬──────────────┘
-                                        │
-                                  TCP byte stream
-                                        │
-                                        ▼
-                         ┌─────────────────────────────┐
-                         │       RedisServer           │
-                         │                              │
-                         │ ServerSocket.accept()       │
-                         │ Creates client connection   │
-                         └──────────────┬──────────────┘
-                                        │
-                              one Socket per client
-                                        │
-                                        ▼
-                         ┌─────────────────────────────┐
-                         │      ClientConnection       │
-                         │                              │
-                         │ InputStream / OutputStream │
-                         │ connection lifecycle       │
-                         └──────────────┬──────────────┘
-                                        │
-                                  raw RESP bytes
-                                        │
-                                        ▼
-                         ┌─────────────────────────────┐
-                         │        RespParser           │
-                         │                              │
-                         │ bytes → complete commands  │
-                         │ handles partial reads      │
-                         │ handles multiple commands  │
-                         └──────────────┬──────────────┘
-                                        │
-                              List<String> command
-                                        │
-                                        ▼
-                         ┌─────────────────────────────┐
-                         │      Command Handling       │
-                         │                              │
-                         │ PING / ECHO / SET / GET    │
-                         │ TYPE / XADD                │
-                         └──────────────┬──────────────┘
-                                        │
-                                        ▼
-                         ┌─────────────────────────────┐
-                         │         RedisStore          │
-                         │                              │
-                         │ ConcurrentHashMap          │
-                         │ String values              │
-                         │ Redis streams              │
-                         │ TTL metadata               │
-                         └─────────────────────────────┘
+---
+
+## 🏗️ High-Level Architecture
+
+All client traffic flows straight into a listening `ServerSocket` — there's no gateway or proxy layer here, ByteCache **is** the server. Every accepted connection gets its own thread and its own `ClientConnection`, but every thread reads from and writes to the **same** shared store.
+
+<p align="center">
+  <img src="./assets/Detailed_Architecture.png" alt="Detailed Architecture Diagram" width="90%" />
+  <br/>
+  <i>Full layered view — Client, Server, Connection, Protocol, Command, and Storage layers, one arrow per responsibility handoff</i>
+</p>
+
+```
+                 ┌─────────────────────────────┐
+                 │            Client           │
+                 │      redis-cli / TCP        │
+                 └──────────────┬──────────────┘
+                                │  TCP byte stream
+                                ▼
+                 ┌─────────────────────────────┐
+                 │        RedisServer          │
+                 │  ServerSocket.accept()      │
+                 │  spawns one thread / client │
+                 └──────────────┬──────────────┘
+                                │  one Socket per client
+                                ▼
+                 ┌─────────────────────────────┐
+                 │      ClientConnection       │
+                 │  InputStream / OutputStream │
+                 │  owns connection lifecycle  │
+                 └──────────────┬──────────────┘
+                                │  raw RESP bytes
+                                ▼
+                 ┌─────────────────────────────┐
+                 │         RespParser          │
+                 │  bytes → complete commands  │
+                 │  handles partial reads      │
+                 └──────────────┬──────────────┘
+                                │  List<String> command
+                                ▼
+                 ┌─────────────────────────────┐
+                 │      Command Handling       │
+                 │  PING / ECHO / SET / GET    │
+                 │  TYPE / XADD                │
+                 └──────────────┬──────────────┘
+                                ▼
+                 ┌─────────────────────────────┐
+                 │         RedisStore          │
+                 │  ConcurrentHashMap          │
+                 │  Strings + Streams + TTL    │
+                 └─────────────────────────────┘
 ```
 
 ### Responsibility boundaries
 
-**`Main`**
-
-Starts the server.
-
-**`RedisServer`**
-
-Owns the listening `ServerSocket`, accepts incoming clients, and creates a dedicated `ClientConnection` thread for each client.
-
-**`ClientConnection`**
-
-Owns one established TCP connection. It reads bytes, feeds them into the parser, executes complete commands, and writes RESP responses.
-
-**`RespParser`**
-
-Knows how RESP is structured. It does not know what `SET`, `GET`, or `XADD` mean.
-
-**`RedisStore`**
-
-Owns the actual in-memory data. It is shared by all client connections.
-
-**Storage classes**
-
-`StoredValue`, `RedisStream`, `StreamEntry`, and `StreamId` model the supported Redis data types and their internal state.
+| Component | Responsibility |
+|---|---|
+| **`Main`** | Starts the server. |
+| **`RedisServer`** | Owns the listening `ServerSocket`, accepts clients, spawns a `ClientConnection` thread per client. |
+| **`ClientConnection`** | Owns one TCP connection — reads bytes, feeds the parser, executes commands, writes RESP responses. |
+| **`RespParser`** | Knows *how* RESP is structured. Doesn't know what `SET` or `XADD` mean. |
+| **`RedisStore`** | Owns the actual in-memory data, shared across every client connection. |
+| **`StoredValue` / `RedisStream` / `StreamEntry` / `StreamId`** | Model the supported data types and their internal state. |
 
 ---
 
-# Request Lifecycle
+## 🔁 Request Lifecycle
 
-Consider:
+Trace a single command end to end:
 
-```text
+```
 SET name Anuj
 ```
 
-The actual flow is approximately:
-
-```text
+```
 redis-cli
-   │
-   │ RESP bytes
+   │  RESP bytes
    ▼
 TCP Socket
-   │
    ▼
-ClientConnection
-   │
-   │ InputStream.read()
-   ▼
-RespParser
-   │
-   │ ["SET", "name", "Anuj"]
-   ▼
-Command handling
-   │
-   ▼
-RedisStore
-   │
-   │ data.put("name", StoredValue(...))
-   ▼
-In-memory state
-   │
-   ▼
-RESP response
-   │
-   │ +OK\r\n
-   ▼
-TCP Socket
-   │
-   ▼
-redis-cli
+ClientConnection  ──(InputStream.read())──▶  RespParser
+                                                  │  ["SET", "name", "Anuj"]
+                                                  ▼
+                                          Command handling
+                                                  │
+                                                  ▼
+                                            RedisStore
+                                                  │  data.put("name", StoredValue(...))
+                                                  ▼
+                                          In-memory state
+                                                  │
+                                                  ▼
+                                          RESP response (+OK\r\n)
+                                                  │
+                                                  ▼
+                                            TCP Socket ──▶ redis-cli
 ```
 
-For a stream command:
+A stream command follows the same shape, but the payload gets richer at each stage:
 
-```text
+```
 XADD events * user Anuj action login
-```
-
-the path becomes:
-
-```text
-Client
-  ↓
-TCP bytes
-  ↓
-RespParser
-  ↓
+   ↓
 ["XADD", "events", "*", "user", "Anuj", "action", "login"]
-  ↓
-handleXAdd()
-  ↓
-RedisStore
-  ↓
-RedisStream
-  ↓
-StreamEntry
-  ↓
-StreamId + field/value map
-  ↓
+   ↓
+handleXAdd()  →  RedisStore  →  RedisStream  →  StreamEntry(StreamId, fields)
+   ↓
 RESP bulk-string ID response
 ```
 
 ---
 
-# Storage Model
+## 🗄️ Storage Model
 
-The central structure is:
+Everything lives behind one deceptively simple structure:
 
 ```java
-Map<String, Object>
+Map<String, Object> data;   // backed by ConcurrentHashMap
 ```
 
-implemented as a `ConcurrentHashMap`.
-
-Conceptually:
-
-```text
+```
 RedisStore
 │
 └── data : Map<String, Object>
-     │
-     ├── "name"     → StoredValue
-     │                 ├── value = "Anuj"
-     │                 └── expiresAt = null
-     │
-     ├── "session"  → StoredValue
-     │                 ├── value = "abc123"
-     │                 └── expiresAt = timestamp
-     │
-     └── "events"   → RedisStream
-                       └── entries
+     ├── "name"     → StoredValue { value: "Anuj", expiresAt: null }
+     ├── "session"  → StoredValue { value: "abc123", expiresAt: <timestamp> }
+     └── "events"   → RedisStream { entries: [...] }
 ```
 
-The `Object` value is intentional: one key can represent different supported Redis data types.
+The `Object` value type is deliberate: one key namespace, many Redis data types, without over-committing to a rigid schema up front.
 
-For example:
+**Strings** are wrapped in `StoredValue`, which carries both the value and an optional expiry — so a normal key and a `PX`-expiring key share the exact same storage path.
 
-```text
-"name"   → StoredValue
-"age"    → StoredValue
-"events" → RedisStream
 ```
-
-### String values
-
-A string is represented by:
-
-```java
-StoredValue
-```
-
-which contains:
-
-```text
-value
-expiresAt
-```
-
-This allows normal values and expiring values to use the same storage abstraction.
-
-For:
-
-```text
-SET name Anuj
-```
-
-the conceptual state is:
-
-```text
-"name"
-   │
-   ▼
-StoredValue
-   ├── value     = "Anuj"
-   └── expiresAt = null
-```
-
-For:
-
-```text
 SET session abc123 PX 5000
+        ↓
+"session" → StoredValue { value = "abc123", expiresAt = now + 5000 }
 ```
 
-the state is:
-
-```text
-"session"
-   │
-   ▼
-StoredValue
-   ├── value     = "abc123"
-   └── expiresAt = currentTimeMillis + 5000
-```
-
-Expiration is currently **lazy**: when a key is accessed, its expiration timestamp is checked and the key is removed if expired.
+> [!NOTE]
+> Expiration is **lazy**: the timestamp is only checked when the key is next accessed, at which point an expired key is evicted on the spot. There's no background sweeper thread — the trade-off (memory isn't reclaimed until the next access) is explicit and intentional, not an oversight.
 
 ---
 
-# Redis Streams Internals
+## 🌊 Redis Streams Internals
 
-Streams are currently represented using a small set of focused Java classes:
+Streams are modeled with a small, focused set of classes:
 
-```text
-RedisStore
-   │
-   └── key: "events"
-          │
-          ▼
-      RedisStream
-          │
-          └── List<StreamEntry>
-                  │
-                  ├── StreamEntry
-                  ├── StreamEntry
-                  └── StreamEntry
+```
+RedisStore → "events" → RedisStream → List<StreamEntry>
+                                            ├── StreamEntry { StreamId, Map<String,String> fields }
+                                            ├── StreamEntry
+                                            └── StreamEntry
 ```
 
-Each `StreamEntry` contains:
+Example:
 
-```text
-StreamEntry
-├── StreamId
-│   ├── millisecondsTime
-│   └── sequenceNumber
-│
-└── Map<String, String>
-    ├── field → value
-    ├── field → value
-    └── ...
 ```
-
-For example:
-
-```text
 XADD events 1000-0 user Anuj action login
 XADD events 1001-0 user Rahul action logout
 ```
 
-produces conceptually:
-
-```text
-"events"
-    │
-    ▼
-RedisStream
-    │
-    └── entries
-         │
-         ├── [0]
-         │    ├── ID: 1000-0
-         │    └── fields:
-         │         user   → Anuj
-         │         action → login
-         │
-         └── [1]
-              ├── ID: 1001-0
-              └── fields:
-                   user   → Rahul
-                   action → logout
+```
+"events" → RedisStream
+              ├── [0] ID: 1000-0  { user: Anuj,  action: login  }
+              └── [1] ID: 1001-0  { user: Rahul, action: logout }
 ```
 
-### Stream IDs
+### Stream IDs are structured, not stringly-typed
 
-A stream ID is not stored as a single string internally.
+A stream ID like `1000-7` is **not** stored as a raw string — it's a comparable object:
 
-For:
-
-```text
-1000-7
+```java
+class StreamId {
+    long millisecondsTime;
+    long sequenceNumber;
+}
 ```
 
-the Java object contains:
+which lets the stream enforce strictly increasing order on every insert.
 
-```text
-StreamId
-├── millisecondsTime = 1000
-└── sequenceNumber   = 7
+### Supported `XADD` ID forms
+
+| Form | Meaning |
+|---|---|
+| `1000-0` | Explicit, fully specified ID |
+| `1000-*` | Explicit timestamp, auto-generated sequence number |
+| `*` | Fully auto-generated timestamp + sequence number |
+
+For entries sharing a millisecond, the sequence number preserves order:
+
+```
+1000-0 → 1000-1 → 1000-2 → 1000-3
 ```
 
-The textual form is produced by `toString()`.
-
-IDs are comparable, allowing the stream to enforce increasing order.
-
-### Supported XADD ID forms
-
-ByteCache currently supports:
-
-```text
-1000-0     explicit ID
-1000-*     generate sequence number
-*          generate timestamp + sequence number
-```
-
-For repeated entries with the same millisecond timestamp:
-
-```text
-1000-0
-1000-1
-1000-2
-1000-3
-```
-
-The sequence number preserves ordering within the same millisecond.
-
-The stream also validates that a newly inserted explicit ID is greater than the current stream tail.
+Every explicit ID is validated against the current stream tail before insertion — a lower or equal ID is rejected with a RESP error.
 
 ---
 
-# RESP Protocol
+## 📡 RESP Protocol
 
-ByteCache communicates using the Redis Serialization Protocol style used by `redis-cli`.
+ByteCache speaks the same wire format `redis-cli` expects. `PING` arrives roughly as:
 
-For example:
-
-```text
-PING
+```
+*1\r\n$4\r\nPING\r\n
 ```
 
-arrives approximately as:
+and gets a simple-string reply:
 
-```text
-*1\r\n
-$4\r\n
-PING\r\n
 ```
-
-and the server responds:
-
-```text
 +PONG\r\n
 ```
 
-A bulk-string response such as:
+A bulk string like `Anuj` is framed as:
 
-```text
-Anuj
 ```
-
-is encoded as:
-
-```text
 $4\r\n
 Anuj\r\n
 ```
 
-### Why the parser buffers data
+### Why the parser buffers
 
-TCP provides a **byte stream**, not a stream of commands.
+TCP hands you a **byte stream**, not a stream of commands. A single command can be split across reads:
 
-A single command may be split across multiple `read()` calls:
-
-```text
+```
 read #1 → "*1\r\n$4"
 read #2 → "\r\nPING\r\n"
 ```
 
-Or several commands may arrive in one read:
+...or several commands can arrive bundled in one:
 
-```text
+```
 read #1 → command A + command B + command C
 ```
 
-Therefore the parser maintains buffered bytes until a complete RESP command is available.
-
-This is one of the most important networking lessons in the project:
+`RespParser` buffers until a full command is available before handing it off. This is arguably the single most important lesson the project teaches:
 
 > **One `read()` is not one request.**
 
 ---
 
-# Concurrency Model
+## 🧵 Concurrency Model
 
-ByteCache currently uses a **thread-per-connection** model.
+ByteCache uses a **thread-per-connection** model:
 
-The server accepts clients continuously:
-
-```text
+```
 Main server thread
-       │
        ├── accept Client A → Thread A
        ├── accept Client B → Thread B
-       ├── accept Client C → Thread C
-       └── ...
+       └── accept Client C → Thread C
 ```
 
-Each client thread owns its socket connection:
+Each thread owns its own socket — but every thread shares the **same** `RedisStore`:
 
-```text
-Thread A → Socket A → Client A
-Thread B → Socket B → Client B
-Thread C → Socket C → Client C
+```
+             RedisStore (ConcurrentHashMap)
+                  /        |        \
+             Thread A   Thread B   Thread C
 ```
 
-However, the store is shared:
-
-```text
-             RedisStore
-                 │
-        ConcurrentHashMap
-          /       |       \
-         /        |        \
-    Thread A   Thread B   Thread C
-```
-
-`ConcurrentHashMap` is therefore used because multiple client threads can access the same store concurrently.
-
-This is deliberately a simple concurrency model. It makes the relationship between connections, threads, and shared state explicit and provides a foundation for later comparison with event-loop and other server architectures.
+It's a deliberately simple model: connections and threads have a 1:1 relationship, while storage is explicitly shared and made safe via `ConcurrentHashMap`. That gives a clean baseline to compare against thread-pool or event-loop designs later (see [Roadmap](#-roadmap)).
 
 ---
 
-# Supported Commands
+## 🔌 Supported Commands
 
-## `PING`
+| Command | Example | Behavior |
+|---|---|---|
+| `PING` | `PING` | Returns `+PONG` — basic connectivity/protocol check |
+| `ECHO` | `ECHO hello` | Returns `hello` as a RESP bulk string |
+| `SET` | `SET name Anuj` | Stores a string, returns `+OK` |
+| `SET ... PX` | `SET session abc123 PX 5000` | Stores a string with a millisecond TTL, checked lazily |
+| `GET` | `GET name` | Returns the value as a bulk string, or `$-1` if missing/expired |
+| `TYPE` | `TYPE name` / `TYPE events` / `TYPE missing` | Returns `string`, `stream`, or `none` |
+| `XADD` | `XADD events 1000-0 user Anuj` | Appends a stream entry, returns the (possibly generated) ID |
 
-```text
-PING
-```
-
-Response:
-
-```text
-+PONG
-```
-
-Used as the basic connectivity and protocol test.
+`XADD` supports all three ID forms described in [Redis Streams Internals](#-redis-streams-internals) — explicit, partially generated, and fully generated.
 
 ---
 
-## `ECHO`
+## 🔍 Engineering Deep Dives
 
-```text
-ECHO hello
-```
+**1. TCP is just a byte stream.** `ServerSocket`, `Socket`, `InputStream`, `OutputStream` are used directly — TCP has no idea what `SET` or `XADD` mean, it only moves bytes. RESP is what gives those bytes application meaning.
 
-Response:
+**2. Parsing is separate from execution.** `RespParser` only turns bytes into `["SET", "name", "Anuj"]`. It never decides what `SET` *does* — that decoupling keeps protocol parsing from becoming entangled with application logic.
 
-```text
-hello
-```
+**3. Connections are persistent.** A connection isn't torn down after one command — `PING`, `SET`, `GET`, `TYPE`, and `XADD` can all ride the same TCP connection, exactly like real Redis usage.
 
-Implemented as a RESP bulk string.
+**4. Expiration is lazy, on purpose.** No background thread scans for expired keys. `GET` checks `expiresAt` at read time and evicts on the spot — smaller and more explicit, at the cost of not reclaiming memory until the next access.
+
+**5. Stream ordering is structural, not textual.** IDs compare as `(millisecondsTime, sequenceNumber)` tuples, so `1000-2 < 1000-3 < 1001-0` is enforced by the type system, not string comparison tricks.
 
 ---
 
-## `SET`
+## 📂 Project Structure
 
-```text
-SET name Anuj
 ```
-
-Stores a string value and returns:
-
-```text
-+OK
-```
-
-### With expiration
-
-```text
-SET session abc123 PX 5000
-```
-
-The value expires after the specified number of milliseconds.
-
-Expiration is currently checked lazily when the key is accessed.
-
----
-
-## `GET`
-
-```text
-GET name
-```
-
-Returns the stored value as a RESP bulk string.
-
-For a missing or expired key:
-
-```text
-$-1
-```
-
----
-
-## `TYPE`
-
-```text
-TYPE name
-TYPE events
-TYPE missing
-```
-
-Returns:
-
-```text
-string
-stream
-none
-```
-
-This works by inspecting the Java object associated with the key.
-
----
-
-## `XADD`
-
-### Explicit ID
-
-```text
-XADD events 1000-0 user Anuj
-```
-
-### Auto-generated sequence number
-
-```text
-XADD events 1000-* user Anuj
-```
-
-### Fully auto-generated ID
-
-```text
-XADD events * user Anuj
-```
-
-A generated ID is returned as a RESP bulk string:
-
-```text
-"1000-0"
-```
-
-Fields are stored as:
-
-```text
-field → value
-```
-
-pairs inside each `StreamEntry`.
-
----
-
-# Engineering Deep Dives
-
-## 1. TCP is a byte stream
-
-The project intentionally works directly with:
-
-```java
-ServerSocket
-Socket
-InputStream
-OutputStream
-```
-
-This makes the transport layer visible.
-
-TCP does not understand:
-
-```text
-PING
-SET
-GET
-XADD
-```
-
-It only transports ordered bytes.
-
-RESP gives those bytes application-level meaning.
-
----
-
-## 2. Protocol parsing is separate from command execution
-
-`RespParser` does not decide what `SET` means.
-
-It only turns:
-
-```text
-RESP bytes
-```
-
-into:
-
-```text
-["SET", "name", "Anuj"]
-```
-
-Command handling then decides what to do with that structure.
-
-This separation prevents protocol parsing from becoming tightly coupled to application behavior.
-
----
-
-## 3. Persistent connections
-
-A client connection is not closed after one command.
-
-Conceptually:
-
-```text
-Connection
-   │
-   ├── PING
-   ├── SET name Anuj
-   ├── GET name
-   ├── TYPE name
-   ├── XADD events *
-   └── ...
-```
-
-The same TCP connection can therefore carry multiple commands.
-
----
-
-## 4. Lazy expiration
-
-TTL does not require a background cleanup thread in the current implementation.
-
-Instead:
-
-```text
-GET key
-   │
-   ▼
-Does key exist?
-   │
-   ▼
-Has expiresAt been reached?
-   │
-   ├── No  → return value
-   │
-   └── Yes → remove key → return missing
-```
-
-This keeps the current implementation small while making expiration semantics explicit.
-
----
-
-## 5. Stream ID ordering
-
-Stream IDs are represented as:
-
-```text
-(millisecondsTime, sequenceNumber)
-```
-
-Comparison is lexicographic:
-
-```text
-first compare millisecondsTime
-then compare sequenceNumber
-```
-
-Therefore:
-
-```text
-1000-2 < 1000-3
-1000-3 < 1001-0
-```
-
-This ordering is enforced when adding entries.
-
----
-
-# Current Status
-
-### Implemented
-
-- [x] Raw TCP server
-- [x] `ServerSocket` connection acceptance
-- [x] Per-client `Socket`
-- [x] Java input/output streams
-- [x] Persistent client connections
-- [x] Multiple simultaneous clients
-- [x] Thread-per-connection model
-- [x] RESP request parsing
-- [x] Incremental parsing across partial reads
-- [x] Multiple commands in a single read
-- [x] RESP simple strings
-- [x] RESP bulk strings
-- [x] RESP errors
-- [x] `PING`
-- [x] `ECHO`
-- [x] `SET`
-- [x] `GET`
-- [x] `SET PX`
-- [x] Lazy expiration
-- [x] `TYPE`
-- [x] Redis Streams
-- [x] Explicit stream IDs
-- [x] `milliseconds-*` stream IDs
-- [x] `*` auto-generated stream IDs
-- [x] Stream ID ordering validation
-- [x] Stream field/value pairs
-- [x] Shared `ConcurrentHashMap` storage
-- [x] Basic wrong-type protection
-- [x] `redis-cli` interoperability testing
-
-### In active development
-
-The project is continuing toward broader Redis behavior and stronger engineering guarantees. Planned work is intentionally driven by the next concrete requirement rather than by prematurely building a large framework.
-
----
-
-# Project Structure
-
-Current structure:
-
-```text
 ByteCache/
-│
-├── src/
-│   └── main/
-│       └── java/
-│           │
-│           ├── Main.java
-│           │
-│           ├── server/
-│           │   └── RedisServer.java
-│           │
-│           ├── connection/
-│           │   └── ClientConnection.java
-│           │
-│           ├── protocol/
-│           │   └── RespParser.java
-│           │
-│           └── storage/
-│               ├── RedisStore.java
-│               ├── StoredValue.java
-│               ├── RedisStream.java
-│               ├── StreamEntry.java
-│               └── StreamId.java
-│
+├── src/main/java/
+│   ├── Main.java
+│   ├── server/
+│   │   └── RedisServer.java
+│   ├── connection/
+│   │   └── ClientConnection.java
+│   ├── protocol/
+│   │   └── RespParser.java
+│   └── storage/
+│       ├── RedisStore.java
+│       ├── StoredValue.java
+│       ├── RedisStream.java
+│       ├── StreamEntry.java
+│       └── StreamId.java
 ├── pom.xml
 └── README.md
 ```
 
-### Why these boundaries?
+The structure deliberately avoids both failure modes: a single 1000-line `Main.java`, and forty interfaces before the server can handle a second command. New classes appear when a real responsibility shows up — not before.
 
-The project avoids both extremes:
-
-**Too little structure**
-
-```text
-Main.java
-    └── 1000 lines of everything
 ```
-
-and:
-
-**Too much premature abstraction**
-
-```text
-40 interfaces
-20 factories
-10 strategies
-before the server has a second command
-```
-
-Instead, classes are introduced around real responsibilities:
-
-```text
-Server lifecycle
-       ↓
-Connection lifecycle
-       ↓
-Protocol parsing
-       ↓
-Command behavior
-       ↓
-Data storage
+Server lifecycle → Connection lifecycle → Protocol parsing → Command behavior → Data storage
 ```
 
 ---
 
-# Getting Started
+## ⚙️ How to Run
 
-## Requirements
+### 1. Requirements
 
-- JDK 25 or compatible Java version
-- Maven
-- `redis-cli` for convenient interoperability testing
-- Windows/Linux/macOS with a TCP-capable environment
+| Requirement | Notes |
+|---|---|
+| JDK 25+ | Or a compatible Java version |
+| Maven | Used for build lifecycle |
+| `redis-cli` | Optional, but recommended for interoperability testing |
+| OS | Windows / Linux / macOS with a TCP-capable environment |
 
-## Build
+### 2. Build
 
 From the project root:
 
@@ -965,29 +445,19 @@ From the project root:
 mvn clean compile
 ```
 
-The project can also be compiled directly from the Java source tree during development.
+### 3. Run
 
-## Run
+Start the server via `Main`. It listens on the default Redis port:
 
-Start the server through the application's `Main` class.
-
-The default server port is:
-
-```text
+```
 6379
 ```
 
-The server will wait for TCP clients.
-
-## Test with redis-cli
-
-If the client can reach the server directly:
+### 4. Explore with `redis-cli`
 
 ```bash
 redis-cli -p 6379
 ```
-
-Then:
 
 ```text
 PING
@@ -998,7 +468,7 @@ SET session abc PX 5000
 GET session
 ```
 
-For stream behavior:
+Stream commands:
 
 ```text
 XADD events 1000-0 user Anuj
@@ -1008,257 +478,134 @@ XADD events * user Anuj
 TYPE events
 ```
 
-In the current development environment, the Java server runs on Windows while `redis-cli` is also used from WSL. The WSL-to-Windows gateway address may therefore be used instead of `localhost`, depending on the local network configuration.
+> [!NOTE]
+> If the Java server runs on Windows and `redis-cli` runs from WSL, you may need the WSL-to-Windows gateway address instead of `localhost`, depending on your network configuration.
 
 ---
 
-# Testing & Verification
+## 🧪 Testing & Verification
 
-ByteCache is developed incrementally using the CodeCrafters **Build Your Own Redis** challenge as a progression guide and behavioral reference.
+ByteCache is built incrementally using the CodeCrafters **Build Your Own Redis** challenge as a progression guide — not a source of copied solutions. Verification happens at several levels:
 
-The project is not treated as a collection of copied solutions.
-
-Validation is performed through several levels:
-
-### 1. Direct compilation
-
-Every architectural change is compiled from the full source tree.
-
-### 2. Real TCP interaction
-
-The server is exercised through an actual TCP client rather than only direct Java method calls.
-
-### 3. `redis-cli`
-
-Using a real Redis client makes the wire-level compatibility meaningful.
-
-### 4. Boundary experiments
-
-Particular attention is given to cases such as:
-
-- partial TCP reads
-- multiple commands arriving together
-- persistent connections
-- missing keys
-- expired keys
-- invalid stream IDs
-- duplicate/non-increasing stream IDs
-- generated stream IDs
-- multiple clients sharing the same store
-- wrong data type operations
-
-### 5. CodeCrafters
-
-CodeCrafters checks are useful as an external compatibility signal and roadmap, while the primary goal remains understanding and independently implementing the underlying behavior.
+1. **Direct compilation** — every architectural change is compiled from the full source tree.
+2. **Real TCP interaction** — the server is exercised through an actual TCP client, not just direct Java method calls.
+3. **`redis-cli` compatibility** — using a real Redis client validates wire-level correctness, not just internal logic.
+4. **Boundary experiments** — deliberate attention to partial TCP reads, multiple commands arriving together, persistent connections, missing/expired keys, invalid or non-increasing stream IDs, generated IDs, concurrent clients, and wrong-type operations.
+5. **CodeCrafters checks** — used as an external compatibility signal and roadmap, while the primary goal stays independent understanding and implementation.
 
 ---
 
-# Design Principles
+## 🧭 Design Principles
 
-## Understand before abstracting
+| Principle | What it means in practice |
+|---|---|
+| **Understand before abstracting** | New classes appear when a real responsibility exists, not ahead of time. |
+| **No black boxes** | `Socket`, `InputStream`, `ConcurrentHashMap` are studied, not treated as magic. |
+| **Protocol before convenience** | The project works at the level of wire bytes and RESP framing, not a high-level client API. |
+| **Separate concerns** | Networking doesn't know about stream IDs; the parser doesn't know what `SET` means; storage doesn't know about TCP. |
+| **Shared state must be intentional** | Every connection has its own thread, but the store is shared — and that relationship is explicit in the design. |
+| **Verify behavior, not just compilation** | A server can compile perfectly and still fail at the network boundary, so real clients and real TCP interactions are part of development. |
+| **Learn from simplifications** | Every place ByteCache is smaller than Redis is a prompt to ask: *what does real Redis do here, and why?* |
 
-New classes and abstractions are introduced when a real responsibility appears.
+---
 
-The architecture evolves with the server instead of being designed as a large framework before the requirements exist.
+## 🔮 Future Vision — Planned Architecture
 
-## No black boxes
+The current server — six commands, two data types, thread-per-connection — is the **foundation**. The direction below is where ByteCache is headed once the concurrency, persistence, and protocol work in the [Roadmap](#-roadmap) lands.
 
-If the project uses:
+<p align="center">
+  <img src="./assets/Planned_Architecture.png" alt="Planned Future Architecture" width="90%" />
+  <br/>
+  <i>The envisioned system — an event-loop or thread-pool front end, a broader command/data-type surface, a durability layer for recovery after restart, and a benchmarking harness for throughput/latency</i>
+</p>
 
-```java
-Socket
-InputStream
-ConcurrentHashMap
+### Where each piece is headed
+
+| Area | Today | Planned |
+|---|---|---|
+| **Concurrency** | Thread-per-connection | Compare against thread-pool and event-loop (e.g. NIO selector-based) models under real load |
+| **Command surface** | 6 commands, 2 data types | Broader RESP value types, more Redis data types, stronger validation/error semantics |
+| **Streams** | Append + ordering validation | Read/query operations (`XRANGE`, `XREAD`-style), richer stream semantics |
+| **Durability** | Pure in-memory, nothing survives restart | Investigate persistence strategies and recovery semantics |
+| **Observability** | None yet | Structured logging, throughput/latency benchmarks |
+| **Testing** | Manual + `redis-cli` sessions | Protocol-level test client, integration suite, broader unit coverage |
+
+> [!NOTE]
+> These are directions, not commitments with dates — see the [Roadmap](#-roadmap) table below for the actual state of each item today.
+
+---
+
+## 🗺️ Roadmap
+
+| Feature | Status |
+|---|---|
+| Raw TCP server (`ServerSocket` / `Socket`) | ✅ Completed |
+| Persistent, multi-client connections | ✅ Completed |
+| Thread-per-connection concurrency | ✅ Completed |
+| RESP request parsing (partial reads + pipelining) | ✅ Completed |
+| RESP simple strings / bulk strings / errors | ✅ Completed |
+| `PING`, `ECHO`, `SET`, `GET`, `TYPE` | ✅ Completed |
+| `SET ... PX` + lazy expiration | ✅ Completed |
+| Redis Streams (`XADD`, explicit/partial/auto IDs) | ✅ Completed |
+| Monotonic stream ID validation | ✅ Completed |
+| Shared `ConcurrentHashMap` storage | ✅ Completed |
+| Separate command dispatch from connection management | ✅ Completed |
+| Broader command coverage | ❌ Not Started |
+| Stream read/query operations | ❌ Not Started |
+| Additional Redis data types | ❌ Not Started |
+| Thread pool / event-loop architecture | ❌ Not Started |
+| Throughput & latency benchmarking | ❌ Not Started |
+| Persistence & recovery semantics | ❌ Not Started |
+| Structured logging | ❌ Not Started |
+| Protocol-level test client / integration suite | ❌ Not Started |
+
+---
+
+## 🏆 Engineering Highlights
+
+Concepts this project demonstrates hands-on, that frameworks usually hide:
+
+- **Networking from first principles** — a TCP server built directly on `ServerSocket` / `Socket`.
+- **Protocol implementation** — incremental RESP request parsing and response serialization, with no Redis client/server underneath.
+- **Concurrent server architecture** — persistent connections via thread-per-connection, backed by a shared thread-safe store.
+- **In-memory data modeling** — a polymorphic `Map<String, Object>` storage layer supporting multiple data types, with type-specific behavior kept in dedicated classes.
+- **Expiration semantics** — TTL metadata and lazy expiration via absolute expiry timestamps.
+- **Redis Streams** — ordered entries, structured IDs, explicit/timestamp-based/fully-automatic ID generation.
+- **Systems-level debugging** — using real TCP traffic and `redis-cli` to investigate byte-level behavior, persistent connections, partial reads, and protocol framing.
+
+---
+
+## 📚 What I'm Learning
+
+```
+Networking → TCP byte streams → Application protocols → RESP framing/parsing
+   → Command execution → In-memory data structures → TTL / data lifetime
+   → Concurrency and shared state → Streams and ordered identifiers
+   → Performance / architecture → Persistence and durability
 ```
 
-the important behavior of those components is studied rather than treated as magic.
-
-## Protocol before convenience
-
-The project works with actual wire-level bytes and RESP framing instead of hiding communication behind a high-level Redis client API.
-
-## Separate concerns
-
-Networking should not know how stream IDs work.
-
-The RESP parser should not know what `SET` means.
-
-Storage should not know how TCP works.
-
-## Shared state must be intentional
-
-Every client connection has its own thread, but the Redis store is shared.
-
-That relationship is explicit in the architecture and is part of the concurrency design.
-
-## Verify behavior, not just compilation
-
-A server can compile perfectly while still failing at the network boundary.
-
-Therefore, real clients and real TCP interactions are part of development.
-
-## Learn from simplifications
-
-ByteCache is intentionally smaller than Redis.
-
-Each simplification creates an opportunity to ask:
-
-> What does real Redis do here, and why?
+Building each layer directly gives hands-on experience with: TCP socket programming in Java, blocking I/O, connection lifecycle management, byte streams and message framing, protocol parsing, RESP serialization, persistent connections, multi-client servers, thread-per-connection concurrency, concurrent shared state, key-value storage, TTL and lazy expiration, Redis-style data types, ordered stream IDs, automatic identifier generation, error handling, API/data-model boundaries, incremental architecture design, and testing at the network boundary.
 
 ---
 
-# Roadmap
+## 🤝 Contribution
 
-The next stages are driven by actual requirements rather than an arbitrary feature checklist.
-
-### Protocol & command system
-
-- [ ] Expand RESP value types as required
-- [ ] Improve command validation and error semantics
-- [ ] Further separate command dispatch from connection management
-- [ ] Add broader command coverage
-
-### Data structures
-
-- [x] Strings
-- [x] Streams
-- [x] TTL metadata
-- [ ] Additional Redis data types as required by the roadmap
-
-### Streams
-
-- [x] Explicit IDs
-- [x] `milliseconds-*` IDs
-- [x] `*` IDs
-- [x] Monotonic ID validation
-- [x] Field/value storage
-- [ ] Stream read/query operations
-- [ ] Additional stream semantics
-
-### Concurrency & performance
-
-- [x] Multiple clients
-- [x] Shared concurrent store
-- [x] Thread-per-connection model
-- [ ] Measure behavior under concurrent load
-- [ ] Investigate thread pools / event-loop architecture
-- [ ] Benchmark command throughput and latency
-
-### Persistence & durability
-
-- [ ] Investigate persistence requirements
-- [ ] Compare in-memory state with durable storage
-- [ ] Explore recovery semantics
-
-### Engineering quality
-
-- [ ] Broader unit-test coverage
-- [ ] Integration test suite
-- [ ] Protocol-level test client
-- [ ] Structured logging
-- [ ] Performance benchmarks
-- [ ] Failure and connection lifecycle testing
+This project is under active development. Feel free to open an issue or submit a pull request with improvements, fixes, or ideas for new commands and data types.
 
 ---
 
-# What I'm Learning
+## ⚠️ Disclaimer
 
-ByteCache is intended to bridge the gap between high-level backend development and systems-oriented engineering.
+ByteCache is an **educational, Redis-inspired implementation**. It is not Redis, doesn't attempt to reproduce Redis's full internal architecture, and is not intended for production use.
 
-The learning path is:
-
-```text
-Networking
-    ↓
-TCP byte streams
-    ↓
-Application protocols
-    ↓
-RESP framing/parsing
-    ↓
-Command execution
-    ↓
-In-memory data structures
-    ↓
-TTL / data lifetime
-    ↓
-Concurrency and shared state
-    ↓
-Streams and ordered identifiers
-    ↓
-Performance / architecture
-    ↓
-Persistence and durability
-```
-
-By building each layer directly, the project provides hands-on experience with:
-
-- TCP socket programming in Java
-- Blocking I/O
-- Connection lifecycle management
-- Byte streams and message framing
-- Protocol parsing
-- RESP serialization
-- Persistent connections
-- Multi-client servers
-- Thread-per-connection concurrency
-- Concurrent shared state
-- Key-value storage
-- TTL and lazy expiration
-- Redis-style data types
-- Ordered stream IDs
-- Automatic identifier generation
-- Error handling
-- API/data-model boundaries
-- Incremental architecture design
-- Testing at the network boundary
+Its purpose is to build first-hand understanding of networking, protocols, concurrency, in-memory storage, and backend systems — by implementing the mechanisms, not just consuming them.
 
 ---
 
-# Resume-Level Engineering Highlights
-
-The project demonstrates several backend and systems concepts that are easy to hide behind frameworks:
-
-**Networking from first principles**
-
-Implemented a TCP server directly with Java's `ServerSocket` and `Socket` APIs.
-
-**Protocol implementation**
-
-Implemented incremental RESP request parsing and RESP response serialization rather than using a Redis server/client implementation underneath.
-
-**Concurrent server architecture**
-
-Implemented persistent connections using a thread-per-connection model with a shared thread-safe in-memory store.
-
-**In-memory data modeling**
-
-Designed a polymorphic `Map<String, Object>` storage layer supporting strings and streams while keeping type-specific behavior in dedicated classes.
-
-**Expiration semantics**
-
-Implemented TTL metadata and lazy expiration using absolute expiration timestamps.
-
-**Redis Streams**
-
-Implemented ordered stream entries, structured stream IDs, explicit IDs, timestamp-based sequence generation, and fully automatic IDs.
-
-**Systems-oriented debugging**
-
-Used real TCP traffic and `redis-cli` to investigate byte-level behavior, persistent connections, partial reads, and protocol framing.
-
----
-
-# Disclaimer
-
-ByteCache is an **educational Redis-inspired implementation**.
-
-It is not Redis, does not attempt to reproduce Redis's complete internal architecture, and is not intended for production use.
-
-The project exists to develop first-hand understanding of networking, protocols, concurrency, in-memory storage, and backend systems by implementing the mechanisms rather than only consuming them.
-
----
-
-# License
+## 📜 License
 
 License TBD before public release.
+
+<p align="center">
+  Built with ☕ Java and a genuine curiosity about what's underneath Redis.
+</p>
