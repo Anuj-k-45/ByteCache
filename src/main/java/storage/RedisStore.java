@@ -53,7 +53,7 @@ public class RedisStore {
         return storedValue.getValue();
     }
 
-    public void addStreamEntry(
+    public synchronized void addStreamEntry(
             String key,
             StreamEntry entry) {
 
@@ -80,6 +80,8 @@ public class RedisStore {
         }
 
         stream.addEntry(entry);
+
+        notifyAll();
     }
 
     public String getType(String key) {
@@ -195,5 +197,16 @@ public class RedisStore {
 
         return stream.getEntriesAfter(
                 startId);
+    }
+
+    public synchronized void waitForStreamUpdate(
+            long timeoutMilliseconds)
+            throws InterruptedException {
+
+        wait(timeoutMilliseconds);
+    }
+
+    public synchronized void notifyStreamUpdate() {
+        notifyAll();
     }
 }

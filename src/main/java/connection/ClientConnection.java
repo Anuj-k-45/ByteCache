@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -448,41 +449,202 @@ public class ClientConnection implements Runnable {
                         List<String> command,
                         OutputStream outputStream) throws IOException {
 
-                if (command.size() != 4) {
+                int index = 1;
+
+                boolean blocking = false;
+                long blockTimeout = 0;
+
+                // Check for BLOCK option
+                if (command.get(index).equalsIgnoreCase("BLOCK")) {
+
+                        blocking = true;
+
+                        blockTimeout = Long.parseLong(
+                                        command.get(index + 1));
+
+                        index += 2;
+                }
+
+                // STREAMS must come next
+                if (!command.get(index).equalsIgnoreCase("STREAMS")) {
                         return;
                 }
 
-                if (!command.get(1).equalsIgnoreCase("STREAMS")) {
+                index++;
+
+                int remainingArguments = command.size() - index;
+
+                // Half are keys, half are IDs
+                if (remainingArguments % 2 != 0) {
                         return;
                 }
 
-                String key = command.get(2);
+                int streamCount = remainingArguments / 2;
 
-                String startIdString = command.get(3);
+                List<XReadResult> results = new ArrayList<>();
 
-                StreamId startId;
+                for (int i = 0; i < streamCount; i++) {
 
-                try {
-                        startId = StreamId.parse(
-                                        startIdString);
+                        String key = command.get(index + i);
 
-                } catch (IllegalArgumentException e) {
+                        String startIdString = command.get(
+                                        index + streamCount + i);
 
-                        sendError(
+                        StreamId startId;
+
+                        try {
+
+                                startId = StreamId.parse(
+                                                startIdString);
+
+                        } catch (IllegalArgumentException e) {
+
+                                sendError(
+                                                outputStream,
+                                                "Invalid stream ID");
+
+                                return;
+                        }
+
+                        List<StreamEntry> entries = store.getStreamEntriesAfter(
+                                        key,
+                                        startId);
+
+                        results.add(
+                                        new XReadResult(
+                                                        key,
+                                                        entries));
+                }
+
+                // Check whether we already have data
+                if (hasEntries(results)) {
+
+                        sendXReadResponse(
                                         outputStream,
-                                        "Invalid stream ID");
+                                        results);
 
                         return;
                 }
 
-                List<StreamEntry> entries = store.getStreamEntriesAfter(
-                                key,
-                                startId);
+                // If this is normal XREAD, return empty result
+                if (!blocking) {
 
-                sendXReadResponse(
-                                outputStream,
-                                key,
-                                entries);
+                        sendXReadResponse(
+                                        outputStream,
+                                        results);
+
+                        return;
+                }
+
+                // -----------------------------
+                // BLOCKING PART
+                // -----------------------------
+
+                long deadline;
+
+                if (blockTimeout == 0) {
+
+                        deadline = Long.MAX_VALUE;
+
+                } else {
+
+                        deadline = System.currentTimeMillis()
+                                        + blockTimeout;
+                }
+
+                while (true) {
+
+                        long remaining;
+
+                        if (blockTimeout == 0) {
+
+                                remaining = 0;
+
+                        } else {
+
+                                remaining = deadline
+                                                - System.currentTimeMillis();
+
+                                if (remaining <= 0) {
+
+                                        send(
+                                                        outputStream,
+                                                        "*-1\r\n");
+
+                                        return;
+                                }
+                        }
+
+                        try {
+
+                                store.waitForStreamUpdate(
+                                                remaining);
+
+                        } catch (InterruptedException e) {
+
+                                Thread.currentThread().interrupt();
+
+                                return;
+                        }
+
+                        // Something changed.
+                        // Check the streams again.
+
+                        results.clear();
+
+                        for (int i = 0; i < streamCount; i++) {
+
+                                String key = command.get(index + i);
+
+                                String startIdString = command.get(
+                                                index + streamCount + i);
+
+                                StreamId startId;
+
+                                try {
+
+                                        startId = StreamId.parse(
+                                                        startIdString);
+
+                                } catch (IllegalArgumentException e) {
+
+                                        sendError(
+                                                        outputStream,
+                                                        "Invalid stream ID");
+
+                                        return;
+                                }
+
+                                List<StreamEntry> entries = store.getStreamEntriesAfter(
+                                                key,
+                                                startId);
+
+                                results.add(
+                                                new XReadResult(
+                                                                key,
+                                                                entries));
+                        }
+
+                        if (hasEntries(results)) {
+
+                                sendXReadResponse(
+                                                outputStream,
+                                                results);
+
+                                return;
+                        }
+
+                        // If timeout was reached, return null array.
+                        if (blockTimeout != 0
+                                        && System.currentTimeMillis() >= deadline) {
+
+                                send(
+                                                outputStream,
+                                                "*-1\r\n");
+
+                                return;
+                        }
+                }
         }
 
         private void sendError(
@@ -573,26 +735,13 @@ public class ClientConnection implements Runnable {
 
         private void sendXReadResponse(
                         OutputStream outputStream,
-                        String key,
-                        List<StreamEntry> entries) throws IOException {
+                        List<XReadResult> results) throws IOException {
 
                 send(
                                 outputStream,
-                                "*1\r\n");
+                                "*" + results.size() + "\r\n");
 
-                send(
-                                outputStream,
-                                "*2\r\n");
-
-                sendBulkString(
-                                outputStream,
-                                key);
-
-                send(
-                                outputStream,
-                                "*" + entries.size() + "\r\n");
-
-                for (StreamEntry entry : entries) {
+                for (XReadResult result : results) {
 
                         send(
                                         outputStream,
@@ -600,24 +749,66 @@ public class ClientConnection implements Runnable {
 
                         sendBulkString(
                                         outputStream,
-                                        entry.getId().toString());
-
-                        Map<String, String> fields = entry.getFields();
+                                        result.key);
 
                         send(
                                         outputStream,
-                                        "*" + (fields.size() * 2) + "\r\n");
+                                        "*" + result.entries.size() + "\r\n");
 
-                        for (Map.Entry<String, String> field : fields.entrySet()) {
+                        for (StreamEntry entry : result.entries) {
+
+                                send(
+                                                outputStream,
+                                                "*2\r\n");
 
                                 sendBulkString(
                                                 outputStream,
-                                                field.getKey());
+                                                entry.getId().toString());
 
-                                sendBulkString(
+                                Map<String, String> fields = entry.getFields();
+
+                                send(
                                                 outputStream,
-                                                field.getValue());
+                                                "*" + (fields.size() * 2) + "\r\n");
+
+                                for (Map.Entry<String, String> field : fields.entrySet()) {
+
+                                        sendBulkString(
+                                                        outputStream,
+                                                        field.getKey());
+
+                                        sendBulkString(
+                                                        outputStream,
+                                                        field.getValue());
+                                }
                         }
                 }
+        }
+
+        private static class XReadResult {
+
+                private final String key;
+                private final List<StreamEntry> entries;
+
+                private XReadResult(
+                                String key,
+                                List<StreamEntry> entries) {
+
+                        this.key = key;
+                        this.entries = entries;
+                }
+        }
+
+        private boolean hasEntries(
+                        List<XReadResult> results) {
+
+                for (XReadResult result : results) {
+
+                        if (!result.entries.isEmpty()) {
+                                return true;
+                        }
+                }
+
+                return false;
         }
 }
