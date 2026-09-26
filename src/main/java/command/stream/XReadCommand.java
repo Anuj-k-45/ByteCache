@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 
 import command.Command;
+import connection.ClientContext;
 import storage.RedisStore;
 import storage.StreamEntry;
 import storage.StreamId;
@@ -18,7 +19,8 @@ public class XReadCommand implements Command {
     public void execute(
             List<String> command,
             OutputStream outputStream,
-            RedisStore store) throws IOException {
+            RedisStore store,
+            ClientContext context) throws IOException {
 
         int index = 1;
 

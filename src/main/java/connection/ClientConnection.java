@@ -16,6 +16,7 @@ public class ClientConnection implements Runnable {
         private final RespParser parser;
         private final RedisStore store;
         private final CommandDispatcher commandDispatcher;
+        private final ClientContext context;
 
         public ClientConnection(
                         Socket socket,
@@ -25,40 +26,34 @@ public class ClientConnection implements Runnable {
                 this.store = store;
                 this.parser = new RespParser();
                 this.commandDispatcher = new CommandDispatcher();
+                this.context = new ClientContext();
         }
 
         @Override
         public void run() {
 
-                try (
-                                InputStream inputStream = socket.getInputStream();
-                                OutputStream outputStream = socket.getOutputStream()) {
+                try {
+                        InputStream inputStream = socket.getInputStream();
+                        OutputStream outputStream = socket.getOutputStream();
 
                         byte[] buffer = new byte[1024];
-
                         int bytesRead;
 
                         while ((bytesRead = inputStream.read(buffer)) != -1) {
 
-                                parser.feed(
-                                                buffer,
-                                                bytesRead);
+                                parser.feed(buffer, bytesRead);
 
                                 List<List<String>> commands = parser.getCompleteCommands();
 
                                 for (List<String> command : commands) {
-
-                                        handleCommand(
-                                                        command,
-                                                        outputStream);
+                                        handleCommand(command, outputStream);
                                 }
                         }
 
                 } catch (IOException e) {
 
                         System.out.println(
-                                        "Client error: "
-                                                        + e.getMessage());
+                                        "Client error: " + e.getMessage());
 
                 } finally {
 
@@ -80,24 +75,10 @@ public class ClientConnection implements Runnable {
                         return;
                 }
 
-                String commandName = command.get(0).toUpperCase();
-
-                // New command architecture
-                if (commandName.equals("PING")
-                                || commandName.equals("ECHO")
-                                || commandName.equals("SET")
-                                || commandName.equals("GET")
-                                || commandName.equals("TYPE")
-                                || commandName.equals("XADD")
-                                || commandName.equals("XRANGE")
-                                || commandName.equals("XREAD")
-                                || commandName.equals("INCR")
-                        ) {
-
-                        commandDispatcher.dispatch(
-                                        command,
-                                        outputStream,
-                                        store);
-                }
+                commandDispatcher.dispatch(
+                                command,
+                                outputStream,
+                                store,
+                                context);
         }
 }

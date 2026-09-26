@@ -1,15 +1,15 @@
-package command.generic;
+package command.transaction;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import command.Command;
 import connection.ClientContext;
-import protocol.RespWriter;
 import storage.RedisStore;
 
-public class PingCommand implements Command {
+public class MultiCommand implements Command {
 
     @Override
     public void execute(
@@ -18,8 +18,11 @@ public class PingCommand implements Command {
             RedisStore store,
             ClientContext context) throws IOException {
 
-        RespWriter writer = new RespWriter(outputStream);
+        context.startTransaction();
 
-        writer.send("+PONG\r\n");
+        outputStream.write(
+                "+OK\r\n".getBytes(StandardCharsets.UTF_8));
+
+        outputStream.flush();
     }
 }

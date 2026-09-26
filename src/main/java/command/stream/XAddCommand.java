@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 
 import command.Command;
+import connection.ClientContext;
 import storage.RedisStore;
 import storage.StreamEntry;
 import storage.StreamId;
@@ -17,7 +18,8 @@ public class XAddCommand implements Command {
     public void execute(
             List<String> arguments,
             OutputStream outputStream,
-            RedisStore store) throws IOException {
+            RedisStore store,
+            ClientContext context) throws IOException {
 
         if (arguments.size() < 5) {
             return;

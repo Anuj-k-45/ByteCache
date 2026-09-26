@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import command.Command;
+import connection.ClientContext;
 import storage.RedisStore;
 
 public class TypeCommand implements Command {
@@ -14,7 +15,8 @@ public class TypeCommand implements Command {
     public void execute(
             List<String> arguments,
             OutputStream outputStream,
-            RedisStore store) throws IOException {
+            RedisStore store,
+            ClientContext context) throws IOException {
 
         if (arguments.size() < 2) {
             sendError(
