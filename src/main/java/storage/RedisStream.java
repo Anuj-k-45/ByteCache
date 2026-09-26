@@ -136,4 +136,13 @@ public class RedisStream {
 
         return result;
     }
+
+    public StreamId getLastId() {
+
+        if (entries.isEmpty()) {
+            return new StreamId(0, 0);
+        }
+
+        return entries.get(entries.size() - 1).getId();
+    }
 }

@@ -209,4 +209,17 @@ public class RedisStore {
     public synchronized void notifyStreamUpdate() {
         notifyAll();
     }
+
+    public StreamId getStreamLastId(String key) {
+
+        Object storedObject = data.get(key);
+
+        if (!(storedObject instanceof RedisStream)) {
+            return new StreamId(0, 0);
+        }
+
+        RedisStream stream = (RedisStream) storedObject;
+
+        return stream.getLastId();
+    }
 }

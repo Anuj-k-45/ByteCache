@@ -483,6 +483,14 @@ public class ClientConnection implements Runnable {
 
                 List<XReadResult> results = new ArrayList<>();
 
+                // Store the resolved starting IDs.
+                // This is important for "$".
+                List<StreamId> startIds = new ArrayList<>();
+
+                // ---------------------------------
+                // Read initial stream state
+                // ---------------------------------
+
                 for (int i = 0; i < streamCount; i++) {
 
                         String key = command.get(index + i);
@@ -494,8 +502,16 @@ public class ClientConnection implements Runnable {
 
                         try {
 
-                                startId = StreamId.parse(
-                                                startIdString);
+                                if (startIdString.equals("$")) {
+
+                                        // "$" means:
+                                        // use the current last ID of the stream.
+                                        startId = store.getStreamLastId(key);
+
+                                } else {
+
+                                        startId = StreamId.parse(startIdString);
+                                }
 
                         } catch (IllegalArgumentException e) {
 
@@ -505,6 +521,11 @@ public class ClientConnection implements Runnable {
 
                                 return;
                         }
+
+                        // Remember this ID.
+                        // If we block and wake up later,
+                        // we must continue using this same ID.
+                        startIds.add(startId);
 
                         List<StreamEntry> entries = store.getStreamEntriesAfter(
                                         key,
@@ -516,7 +537,10 @@ public class ClientConnection implements Runnable {
                                                         entries));
                 }
 
+                // ---------------------------------
                 // Check whether we already have data
+                // ---------------------------------
+
                 if (hasEntries(results)) {
 
                         sendXReadResponse(
@@ -526,7 +550,10 @@ public class ClientConnection implements Runnable {
                         return;
                 }
 
-                // If this is normal XREAD, return empty result
+                // ---------------------------------
+                // Normal XREAD
+                // ---------------------------------
+
                 if (!blocking) {
 
                         sendXReadResponse(
@@ -536,14 +563,15 @@ public class ClientConnection implements Runnable {
                         return;
                 }
 
-                // -----------------------------
+                // ---------------------------------
                 // BLOCKING PART
-                // -----------------------------
+                // ---------------------------------
 
                 long deadline;
 
                 if (blockTimeout == 0) {
 
+                        // BLOCK 0 means wait indefinitely.
                         deadline = Long.MAX_VALUE;
 
                 } else {
@@ -558,6 +586,7 @@ public class ClientConnection implements Runnable {
 
                         if (blockTimeout == 0) {
 
+                                // wait(0) means wait indefinitely.
                                 remaining = 0;
 
                         } else {
@@ -567,6 +596,7 @@ public class ClientConnection implements Runnable {
 
                                 if (remaining <= 0) {
 
+                                        // Timeout reached.
                                         send(
                                                         outputStream,
                                                         "*-1\r\n");
@@ -587,8 +617,10 @@ public class ClientConnection implements Runnable {
                                 return;
                         }
 
+                        // ---------------------------------
                         // Something changed.
                         // Check the streams again.
+                        // ---------------------------------
 
                         results.clear();
 
@@ -596,24 +628,10 @@ public class ClientConnection implements Runnable {
 
                                 String key = command.get(index + i);
 
-                                String startIdString = command.get(
-                                                index + streamCount + i);
-
-                                StreamId startId;
-
-                                try {
-
-                                        startId = StreamId.parse(
-                                                        startIdString);
-
-                                } catch (IllegalArgumentException e) {
-
-                                        sendError(
-                                                        outputStream,
-                                                        "Invalid stream ID");
-
-                                        return;
-                                }
+                                // IMPORTANT:
+                                // Use the same starting ID that
+                                // we captured before blocking.
+                                StreamId startId = startIds.get(i);
 
                                 List<StreamEntry> entries = store.getStreamEntriesAfter(
                                                 key,
@@ -625,6 +643,7 @@ public class ClientConnection implements Runnable {
                                                                 entries));
                         }
 
+                        // If new entries exist, return immediately.
                         if (hasEntries(results)) {
 
                                 sendXReadResponse(
@@ -634,7 +653,10 @@ public class ClientConnection implements Runnable {
                                 return;
                         }
 
-                        // If timeout was reached, return null array.
+                        // ---------------------------------
+                        // Check timeout again
+                        // ---------------------------------
+
                         if (blockTimeout != 0
                                         && System.currentTimeMillis() >= deadline) {
 
@@ -646,7 +668,7 @@ public class ClientConnection implements Runnable {
                         }
                 }
         }
-
+        
         private void sendError(
                         OutputStream outputStream,
                         String message) throws IOException {
