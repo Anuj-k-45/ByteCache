@@ -11,6 +11,10 @@ import java.util.Map;
 import command.generic.EchoCommand;
 import command.generic.PingCommand;
 import command.generic.TypeCommand;
+import command.list.LLenCommand;
+import command.list.LPushCommand;
+import command.list.LRangeCommand;
+import command.list.RPushCommand;
 import command.numeric.IncrCommand;
 import command.stream.XAddCommand;
 import command.stream.XRangeCommand;
@@ -41,6 +45,10 @@ public class CommandDispatcher {
         commands.put("MULTI", new MultiCommand());
         commands.put("EXEC", new ExecCommand());
         commands.put("DISCARD", new DiscardCommand());
+        commands.put("RPUSH", new RPushCommand());
+        commands.put("LRANGE", new LRangeCommand());
+        commands.put("LPUSH", new LPushCommand());
+        commands.put("LLEN", new LLenCommand());
     }
 
     private void executeTransaction(

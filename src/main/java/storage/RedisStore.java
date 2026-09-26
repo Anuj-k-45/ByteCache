@@ -100,6 +100,10 @@ public class RedisStore {
             return "string";
         }
 
+        if (storedObject instanceof RedisList) {
+            return "list";
+        }
+
         return "none";
     }
 
@@ -222,4 +226,75 @@ public class RedisStore {
 
         return stream.getLastId();
     }
+
+    public synchronized int rpush(String key, String value) {
+
+        Object storedObject = data.get(key);
+
+        RedisList list;
+
+        if (storedObject == null) {
+            list = new RedisList();
+            data.put(key, list);
+        } else if (storedObject instanceof RedisList) {
+            list = (RedisList) storedObject;
+        } else {
+            throw new IllegalArgumentException(
+                    "Key already contains a different type");
+        }
+
+        list.add(value);
+
+        return list.size();
+    }
+
+    public List<String> lrange(
+            String key,
+            int start,
+            int stop) {
+
+        Object storedObject = data.get(key);
+
+        if (!(storedObject instanceof RedisList)) {
+            return new ArrayList<>();
+        }
+
+        RedisList list = (RedisList) storedObject;
+
+        return list.getRange(start, stop);
+    }
+
+    public synchronized int lpush(String key, String value) {
+
+        Object storedObject = data.get(key);
+
+        RedisList list;
+
+        if (storedObject == null) {
+            list = new RedisList();
+            data.put(key, list);
+        } else if (storedObject instanceof RedisList) {
+            list = (RedisList) storedObject;
+        } else {
+            throw new IllegalArgumentException(
+                    "Key already contains a different type");
+        }
+
+        list.addFirst(value);
+
+        return list.size();
+    }
+
+    public int llen(String key) {
+        Object storedObject = data.get(key);
+
+        if (!(storedObject instanceof RedisList)) {
+            return 0;
+        }
+
+        RedisList list = (RedisList) storedObject;
+
+        return list.size();
+    }
+
 }
