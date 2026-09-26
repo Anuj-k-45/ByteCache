@@ -245,6 +245,8 @@ public class RedisStore {
 
         list.add(value);
 
+        notifyAll();
+
         return list.size();
     }
 
@@ -282,6 +284,8 @@ public class RedisStore {
 
         list.addFirst(value);
 
+        notifyAll();
+
         return list.size();
     }
 
@@ -295,6 +299,73 @@ public class RedisStore {
         RedisList list = (RedisList) storedObject;
 
         return list.size();
+    }
+
+    public synchronized String lpop(String key) {
+        Object storedObject = data.get(key);
+
+        if (!(storedObject instanceof RedisList)) {
+            return null;
+        }
+
+        RedisList list = (RedisList) storedObject;
+
+        return list.removeFirst();
+    }
+
+    public synchronized List<String> lpop(String key, int count) {
+        Object storedObject = data.get(key);
+
+        if (!(storedObject instanceof RedisList)) {
+            return new ArrayList<>();
+        }
+
+        RedisList list = (RedisList) storedObject;
+
+        return list.removeFirst(count);
+    }
+
+    public synchronized void waitForListUpdate()
+            throws InterruptedException {
+
+        wait();
+    }
+
+    public synchronized String[] blockingLpop(
+            String key,
+            long timeoutMilliseconds)
+            throws InterruptedException {
+
+        long deadline = System.currentTimeMillis() + timeoutMilliseconds;
+
+        while (true) {
+
+            Object storedObject = data.get(key);
+
+            if (storedObject instanceof RedisList) {
+
+                RedisList list = (RedisList) storedObject;
+
+                String value = list.removeFirst();
+
+                if (value != null) {
+                    return new String[] { key, value };
+                }
+            }
+
+            if (timeoutMilliseconds == 0) {
+                wait();
+            } else {
+
+                long remaining = deadline - System.currentTimeMillis();
+
+                if (remaining <= 0) {
+                    return null;
+                }
+
+                wait(remaining);
+            }
+        }
     }
 
 }

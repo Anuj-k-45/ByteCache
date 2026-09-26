@@ -54,4 +54,25 @@ public class RedisList {
         return new ArrayList<>(
                 elements.subList(start, stop + 1));
     }
+
+    public String removeFirst() {
+        if (elements.isEmpty()) {
+            return null;
+        }
+
+        return elements.remove(0);
+    }
+
+    public List<String> removeFirst(int count) {
+        List<String> removed = new ArrayList<>();
+
+        int numberToRemove = Math.min(count, elements.size());
+
+        for (int i = 0; i < numberToRemove; i++) {
+            removed.add(elements.remove(0));
+        }
+
+        return removed;
+    }
+
 }

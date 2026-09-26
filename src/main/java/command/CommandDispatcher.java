@@ -11,7 +11,9 @@ import java.util.Map;
 import command.generic.EchoCommand;
 import command.generic.PingCommand;
 import command.generic.TypeCommand;
+import command.list.BLPopCommand;
 import command.list.LLenCommand;
+import command.list.LPopCommand;
 import command.list.LPushCommand;
 import command.list.LRangeCommand;
 import command.list.RPushCommand;
@@ -49,57 +51,55 @@ public class CommandDispatcher {
         commands.put("LRANGE", new LRangeCommand());
         commands.put("LPUSH", new LPushCommand());
         commands.put("LLEN", new LLenCommand());
+        commands.put("LPOP", new LPopCommand());
+        commands.put("BLPOP", new BLPopCommand());
     }
 
     private void executeTransaction(
-        OutputStream outputStream,
-        RedisStore store,
-        ClientContext context) throws IOException {
+            OutputStream outputStream,
+            RedisStore store,
+            ClientContext context) throws IOException {
 
-    if (!context.isInTransaction()) {
-        String response =
-                "-ERR EXEC without MULTI\r\n";
+        if (!context.isInTransaction()) {
+            String response = "-ERR EXEC without MULTI\r\n";
+
+            outputStream.write(
+                    response.getBytes(StandardCharsets.UTF_8));
+
+            outputStream.flush();
+            return;
+        }
+
+        List<List<String>> queuedCommands = context.getQueuedCommands();
+
+        List<byte[]> responses = new java.util.ArrayList<>();
+
+        for (List<String> queuedCommand : queuedCommands) {
+
+            ByteArrayOutputStream commandResponse = new ByteArrayOutputStream();
+
+            executeQueuedCommand(
+                    queuedCommand,
+                    commandResponse,
+                    store,
+                    context);
+
+            responses.add(commandResponse.toByteArray());
+        }
+
+        context.endTransaction();
+
+        String header = "*" + responses.size() + "\r\n";
 
         outputStream.write(
-                response.getBytes(StandardCharsets.UTF_8));
+                header.getBytes(StandardCharsets.UTF_8));
+
+        for (byte[] response : responses) {
+            outputStream.write(response);
+        }
 
         outputStream.flush();
-        return;
     }
-
-    List<List<String>> queuedCommands =
-            context.getQueuedCommands();
-
-    List<byte[]> responses = new java.util.ArrayList<>();
-
-    for (List<String> queuedCommand : queuedCommands) {
-
-        ByteArrayOutputStream commandResponse =
-                new ByteArrayOutputStream();
-
-        executeQueuedCommand(
-                queuedCommand,
-                commandResponse,
-                store,
-                context);
-
-        responses.add(commandResponse.toByteArray());
-    }
-
-    context.endTransaction();
-
-    String header =
-            "*" + responses.size() + "\r\n";
-
-    outputStream.write(
-            header.getBytes(StandardCharsets.UTF_8));
-
-    for (byte[] response : responses) {
-        outputStream.write(response);
-    }
-
-    outputStream.flush();
-}
 
     public void dispatch(
             List<String> command,
