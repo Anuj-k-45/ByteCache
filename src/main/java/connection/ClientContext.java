@@ -1,15 +1,19 @@
 package connection;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class ClientContext {
 
     private boolean inTransaction;
     private final List<List<String>> queuedCommands;
+    private final Set<String> watchedKeys;
 
     public ClientContext() {
         this.queuedCommands = new ArrayList<>();
+        this.watchedKeys = new HashSet<>();
     }
 
     public boolean isInTransaction() {
@@ -32,5 +36,13 @@ public class ClientContext {
 
     public List<List<String>> getQueuedCommands() {
         return queuedCommands;
+    }
+
+    public void watchKey(String key) {
+        watchedKeys.add(key);
+    }
+
+    public Set<String> getWatchedKeys() {
+        return watchedKeys;
     }
 }

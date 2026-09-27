@@ -26,6 +26,7 @@ import command.string.SetCommand;
 import command.transaction.DiscardCommand;
 import command.transaction.ExecCommand;
 import command.transaction.MultiCommand;
+import command.transaction.WatchCommand;
 import connection.ClientContext;
 import storage.RedisStore;
 
@@ -53,6 +54,7 @@ public class CommandDispatcher {
         commands.put("LLEN", new LLenCommand());
         commands.put("LPOP", new LPopCommand());
         commands.put("BLPOP", new BLPopCommand());
+        commands.put("WATCH", new WatchCommand());
     }
 
     private void executeTransaction(
@@ -128,7 +130,8 @@ public class CommandDispatcher {
         if (context.isInTransaction()
                 && !commandName.equals("EXEC")
                 && !commandName.equals("MULTI")
-                && !commandName.equals("DISCARD")) {
+                && !commandName.equals("DISCARD")
+                && !commandName.equals("WATCH")) {
 
             context.queueCommand(command);
 
