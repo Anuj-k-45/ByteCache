@@ -9,7 +9,7 @@ import command.Command;
 import connection.ClientContext;
 import storage.RedisStore;
 
-public class DiscardCommand implements Command {
+public class UnwatchCommand implements Command {
 
     @Override
     public void execute(
@@ -18,25 +18,13 @@ public class DiscardCommand implements Command {
             RedisStore store,
             ClientContext context) throws IOException {
 
-        if (!context.isInTransaction()) {
-            String response = "-ERR DISCARD without MULTI\r\n";
-
-            outputStream.write(
-                    response.getBytes(StandardCharsets.UTF_8));
-            outputStream.flush();
-            return;
-        }
-
-        // Clear watched keys and dirty flag.
         store.clearWatchState(context);
-
-        // Clear queued commands and leave transaction mode.
-        context.endTransaction();
 
         String response = "+OK\r\n";
 
         outputStream.write(
                 response.getBytes(StandardCharsets.UTF_8));
+
         outputStream.flush();
     }
 }

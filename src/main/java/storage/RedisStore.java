@@ -1,13 +1,19 @@
 package storage;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+
+import connection.ClientContext;
 
 public class RedisStore {
 
     private final Map<String, Object> data = new ConcurrentHashMap<>();
+
+    private final Map<String, Set<ClientContext>> watchers = new ConcurrentHashMap<>();
 
     public void set(
             String key,
@@ -16,6 +22,8 @@ public class RedisStore {
         data.put(
                 key,
                 new StoredValue(value, null));
+
+        markKeyModified(key);
     }
 
     public void set(
@@ -31,6 +39,8 @@ public class RedisStore {
                 new StoredValue(
                         value,
                         expiresAt));
+
+        markKeyModified(key);
     }
 
     public String get(String key) {
@@ -366,6 +376,53 @@ public class RedisStore {
                 wait(remaining);
             }
         }
+    }
+
+    public synchronized void watchKey(
+            String key,
+            ClientContext context) {
+
+        watchers
+                .computeIfAbsent(
+                        key,
+                        k -> new HashSet<>())
+                .add(context);
+
+        context.watchKey(key);
+    }
+
+    private void markKeyModified(String key) {
+
+        Set<ClientContext> clients = watchers.get(key);
+
+        if (clients == null) {
+            return;
+        }
+
+        for (ClientContext context : clients) {
+            context.markWatchDirty();
+        }
+    }
+
+    public synchronized void clearWatchState(
+            ClientContext context) {
+
+        for (String key : context.getWatchedKeys()) {
+
+            Set<ClientContext> clients = watchers.get(key);
+
+            if (clients == null) {
+                continue;
+            }
+
+            clients.remove(context);
+
+            if (clients.isEmpty()) {
+                watchers.remove(key);
+            }
+        }
+
+        context.clearWatchState();
     }
 
 }

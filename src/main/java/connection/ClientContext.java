@@ -8,6 +8,8 @@ import java.util.Set;
 public class ClientContext {
 
     private boolean inTransaction;
+    private boolean watchDirty;
+
     private final List<List<String>> queuedCommands;
     private final Set<String> watchedKeys;
 
@@ -44,5 +46,18 @@ public class ClientContext {
 
     public Set<String> getWatchedKeys() {
         return watchedKeys;
+    }
+
+    public void markWatchDirty() {
+        watchDirty = true;
+    }
+
+    public boolean isWatchDirty() {
+        return watchDirty;
+    }
+
+    public void clearWatchState() {
+        watchedKeys.clear();
+        watchDirty = false;
     }
 }

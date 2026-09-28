@@ -42,9 +42,18 @@ public class WatchCommand implements Command {
             return;
         }
 
-        String key = arguments.get(1);
+        /*
+         * arguments[0] = WATCH
+         * arguments[1...] = keys
+         */
+        for (int i = 1; i < arguments.size(); i++) {
 
-        context.watchKey(key);
+            String key = arguments.get(i);
+
+            store.watchKey(
+                    key,
+                    context);
+        }
 
         String response = "+OK\r\n";
 

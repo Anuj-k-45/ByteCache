@@ -1,6 +1,5 @@
 package command;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -26,6 +25,7 @@ import command.string.SetCommand;
 import command.transaction.DiscardCommand;
 import command.transaction.ExecCommand;
 import command.transaction.MultiCommand;
+import command.transaction.UnwatchCommand;
 import command.transaction.WatchCommand;
 import connection.ClientContext;
 import storage.RedisStore;
@@ -46,7 +46,7 @@ public class CommandDispatcher {
         commands.put("XREAD", new XReadCommand());
         commands.put("INCR", new IncrCommand());
         commands.put("MULTI", new MultiCommand());
-        commands.put("EXEC", new ExecCommand());
+        commands.put("EXEC", new ExecCommand(this));
         commands.put("DISCARD", new DiscardCommand());
         commands.put("RPUSH", new RPushCommand());
         commands.put("LRANGE", new LRangeCommand());
@@ -55,52 +55,7 @@ public class CommandDispatcher {
         commands.put("LPOP", new LPopCommand());
         commands.put("BLPOP", new BLPopCommand());
         commands.put("WATCH", new WatchCommand());
-    }
-
-    private void executeTransaction(
-            OutputStream outputStream,
-            RedisStore store,
-            ClientContext context) throws IOException {
-
-        if (!context.isInTransaction()) {
-            String response = "-ERR EXEC without MULTI\r\n";
-
-            outputStream.write(
-                    response.getBytes(StandardCharsets.UTF_8));
-
-            outputStream.flush();
-            return;
-        }
-
-        List<List<String>> queuedCommands = context.getQueuedCommands();
-
-        List<byte[]> responses = new java.util.ArrayList<>();
-
-        for (List<String> queuedCommand : queuedCommands) {
-
-            ByteArrayOutputStream commandResponse = new ByteArrayOutputStream();
-
-            executeQueuedCommand(
-                    queuedCommand,
-                    commandResponse,
-                    store,
-                    context);
-
-            responses.add(commandResponse.toByteArray());
-        }
-
-        context.endTransaction();
-
-        String header = "*" + responses.size() + "\r\n";
-
-        outputStream.write(
-                header.getBytes(StandardCharsets.UTF_8));
-
-        for (byte[] response : responses) {
-            outputStream.write(response);
-        }
-
-        outputStream.flush();
+        commands.put("UNWATCH", new UnwatchCommand());
     }
 
     public void dispatch(
@@ -131,7 +86,8 @@ public class CommandDispatcher {
                 && !commandName.equals("EXEC")
                 && !commandName.equals("MULTI")
                 && !commandName.equals("DISCARD")
-                && !commandName.equals("WATCH")) {
+                && !commandName.equals("WATCH")
+                && !commandName.equals("UNWATCH")) {
 
             context.queueCommand(command);
 
@@ -139,16 +95,6 @@ public class CommandDispatcher {
                     "+QUEUED\r\n".getBytes(StandardCharsets.UTF_8));
 
             outputStream.flush();
-
-            return;
-        }
-
-        if (commandName.equals("EXEC")) {
-
-            executeTransaction(
-                    outputStream,
-                    store,
-                    context);
 
             return;
         }
