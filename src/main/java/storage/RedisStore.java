@@ -10,10 +10,19 @@ import java.util.concurrent.ConcurrentHashMap;
 import connection.ClientContext;
 
 public class RedisStore {
+    private final boolean replica;
 
     private final Map<String, Object> data = new ConcurrentHashMap<>();
 
     private final Map<String, Set<ClientContext>> watchers = new ConcurrentHashMap<>();
+
+    public RedisStore(boolean replica) {
+        this.replica = replica;
+    }
+
+    public boolean isReplica() {
+        return replica;
+    }
 
     public void set(
             String key,

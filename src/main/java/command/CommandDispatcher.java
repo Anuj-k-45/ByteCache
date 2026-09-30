@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 
 import command.generic.EchoCommand;
+import command.generic.InfoCommand;
 import command.generic.PingCommand;
 import command.generic.TypeCommand;
 import command.list.BLPopCommand;
@@ -56,6 +57,7 @@ public class CommandDispatcher {
         commands.put("BLPOP", new BLPopCommand());
         commands.put("WATCH", new WatchCommand());
         commands.put("UNWATCH", new UnwatchCommand());
+        commands.put("INFO", new InfoCommand());
     }
 
     public void dispatch(
