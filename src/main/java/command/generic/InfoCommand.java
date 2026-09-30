@@ -26,7 +26,9 @@ public class InfoCommand implements Command {
             role = "master";
         }
 
-        String responseBody = "role:" + role + "\r\n";
+        String responseBody = "role:" + role + "\r\n"
+                + "master_replid:" + store.getReplicationId() + "\r\n"
+                + "master_repl_offset:" + store.getReplicationOffset() + "\r\n";
 
         byte[] bodyBytes = responseBody.getBytes(StandardCharsets.UTF_8);
 

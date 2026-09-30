@@ -11,6 +11,8 @@ import connection.ClientContext;
 
 public class RedisStore {
     private final boolean replica;
+    private final String replicationId;
+    private long replicationOffset;
 
     private final Map<String, Object> data = new ConcurrentHashMap<>();
 
@@ -18,10 +20,20 @@ public class RedisStore {
 
     public RedisStore(boolean replica) {
         this.replica = replica;
+        this.replicationId = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb";
+        this.replicationOffset = 0;
     }
 
     public boolean isReplica() {
         return replica;
+    }
+
+    public String getReplicationId() {
+        return replicationId;
+    }
+
+    public long getReplicationOffset() {
+        return replicationOffset;
     }
 
     public void set(
