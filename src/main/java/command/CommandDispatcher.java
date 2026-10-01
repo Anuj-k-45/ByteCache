@@ -10,6 +10,7 @@ import java.util.Map;
 import command.generic.EchoCommand;
 import command.generic.InfoCommand;
 import command.generic.PingCommand;
+import command.generic.ReplConfCommand;
 import command.generic.TypeCommand;
 import command.list.BLPopCommand;
 import command.list.LLenCommand;
@@ -58,6 +59,8 @@ public class CommandDispatcher {
         commands.put("WATCH", new WatchCommand());
         commands.put("UNWATCH", new UnwatchCommand());
         commands.put("INFO", new InfoCommand());
+        commands.put("REPLCONF", new ReplConfCommand());
+        commands.put("PSYNC", new command.generic.PsyncCommand());
     }
 
     public void dispatch(
