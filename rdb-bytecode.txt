@@ -1,0 +1,677 @@
+Compiled from "RdbReader.java"
+public class storage.RdbReader {
+  private final storage.RedisStore store;
+
+  private final java.nio.file.Path file;
+
+  public storage.RdbReader(storage.RedisStore, java.lang.String, java.lang.String);
+    Code:
+         0: aload_0
+         1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+         4: aload_0
+         5: aload_1
+         6: putfield      #7                  // Field store:Lstorage/RedisStore;
+         9: aload_0
+        10: aload_2
+        11: iconst_1
+        12: anewarray     #13                 // class java/lang/String
+        15: dup
+        16: iconst_0
+        17: aload_3
+        18: aastore
+        19: invokestatic  #15                 // InterfaceMethod java/nio/file/Path.of:(Ljava/lang/String;[Ljava/lang/String;)Ljava/nio/file/Path;
+        22: putfield      #21                 // Field file:Ljava/nio/file/Path;
+        25: return
+
+  public void load() throws java.io.IOException;
+    Code:
+         0: aload_0
+         1: getfield      #21                 // Field file:Ljava/nio/file/Path;
+         4: iconst_0
+         5: anewarray     #25                 // class java/nio/file/LinkOption
+         8: invokestatic  #27                 // Method java/nio/file/Files.exists:(Ljava/nio/file/Path;[Ljava/nio/file/LinkOption;)Z
+        11: ifne          41
+        14: getstatic     #33                 // Field java/lang/System.out:Ljava/io/PrintStream;
+        17: aload_0
+        18: getfield      #21                 // Field file:Ljava/nio/file/Path;
+        21: invokestatic  #39                 // Method java/lang/String.valueOf:(Ljava/lang/Object;)Ljava/lang/String;
+        24: invokedynamic #43,  0             // InvokeDynamic #0:makeConcatWithConstants:(Ljava/lang/String;)Ljava/lang/String;
+        29: invokevirtual #47                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+        32: getstatic     #33                 // Field java/lang/System.out:Ljava/io/PrintStream;
+        35: ldc           #53                 // String Starting with an empty database.
+        37: invokevirtual #47                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+        40: return
+        41: getstatic     #33                 // Field java/lang/System.out:Ljava/io/PrintStream;
+        44: aload_0
+        45: getfield      #21                 // Field file:Ljava/nio/file/Path;
+        48: invokestatic  #39                 // Method java/lang/String.valueOf:(Ljava/lang/Object;)Ljava/lang/String;
+        51: invokedynamic #55,  0             // InvokeDynamic #1:makeConcatWithConstants:(Ljava/lang/String;)Ljava/lang/String;
+        56: invokevirtual #47                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+        59: aload_0
+        60: getfield      #21                 // Field file:Ljava/nio/file/Path;
+        63: invokestatic  #56                 // Method java/nio/file/Files.readAllBytes:(Ljava/nio/file/Path;)[B
+        66: astore_1
+        67: new           #60                 // class storage/RdbReader$RdbInput
+        70: dup
+        71: aload_1
+        72: invokespecial #62                 // Method storage/RdbReader$RdbInput."<init>":([B)V
+        75: astore_2
+        76: aload_0
+        77: aload_2
+        78: invokevirtual #65                 // Method readHeader:(Lstorage/RdbReader$RdbInput;)V
+        81: aload_0
+        82: aload_2
+        83: invokevirtual #69                 // Method readSections:(Lstorage/RdbReader$RdbInput;)V
+        86: getstatic     #33                 // Field java/lang/System.out:Ljava/io/PrintStream;
+        89: ldc           #72                 // String RDB loading completed.
+        91: invokevirtual #47                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+        94: return
+
+  private void readHeader(storage.RdbReader$RdbInput) throws java.io.IOException;
+    Code:
+         0: aload_1
+         1: bipush        9
+         3: invokevirtual #74                 // Method storage/RdbReader$RdbInput.readBytes:(I)[B
+         6: astore_2
+         7: new           #13                 // class java/lang/String
+        10: dup
+        11: aload_2
+        12: getstatic     #78                 // Field java/nio/charset/StandardCharsets.US_ASCII:Ljava/nio/charset/Charset;
+        15: invokespecial #84                 // Method java/lang/String."<init>":([BLjava/nio/charset/Charset;)V
+        18: astore_3
+        19: aload_3
+        20: ldc           #87                 // String REDIS0011
+        22: invokevirtual #89                 // Method java/lang/String.equals:(Ljava/lang/Object;)Z
+        25: ifne          42
+        28: new           #93                 // class java/io/IOException
+        31: dup
+        32: aload_3
+        33: invokedynamic #95,  0             // InvokeDynamic #2:makeConcatWithConstants:(Ljava/lang/String;)Ljava/lang/String;
+        38: invokespecial #96                 // Method java/io/IOException."<init>":(Ljava/lang/String;)V
+        41: athrow
+        42: return
+
+  private void readSections(storage.RdbReader$RdbInput) throws java.io.IOException;
+    Code:
+         0: aload_1
+         1: invokevirtual #98                 // Method storage/RdbReader$RdbInput.readUnsignedByte:()I
+         4: istore_2
+         5: iload_2
+         6: sipush        250
+         9: if_icmpne     20
+        12: aload_0
+        13: aload_1
+        14: invokevirtual #102                // Method readMetadata:(Lstorage/RdbReader$RdbInput;)V
+        17: goto          83
+        20: iload_2
+        21: sipush        254
+        24: if_icmpne     35
+        27: aload_0
+        28: aload_1
+        29: invokevirtual #105                // Method readDatabase:(Lstorage/RdbReader$RdbInput;)V
+        32: goto          83
+        35: iload_2
+        36: sipush        255
+        39: if_icmpne     59
+        42: aload_1
+        43: invokevirtual #108                // Method storage/RdbReader$RdbInput.remaining:()I
+        46: bipush        8
+        48: if_icmplt     58
+        51: aload_1
+        52: bipush        8
+        54: invokevirtual #74                 // Method storage/RdbReader$RdbInput.readBytes:(I)[B
+        57: pop
+        58: return
+        59: new           #93                 // class java/io/IOException
+        62: dup
+        63: ldc           #111                // String Unknown RDB opcode: 0x%02X
+        65: iconst_1
+        66: anewarray     #2                  // class java/lang/Object
+        69: dup
+        70: iconst_0
+        71: iload_2
+        72: invokestatic  #113                // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+        75: aastore
+        76: invokestatic  #118                // Method java/lang/String.format:(Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/String;
+        79: invokespecial #96                 // Method java/io/IOException."<init>":(Ljava/lang/String;)V
+        82: athrow
+        83: goto          0
+
+  private void readMetadata(storage.RdbReader$RdbInput) throws java.io.IOException;
+    Code:
+         0: aload_0
+         1: aload_1
+         2: invokevirtual #122                // Method readString:(Lstorage/RdbReader$RdbInput;)Ljava/lang/String;
+         5: astore_2
+         6: aload_0
+         7: aload_1
+         8: invokevirtual #122                // Method readString:(Lstorage/RdbReader$RdbInput;)Ljava/lang/String;
+        11: astore_3
+        12: getstatic     #33                 // Field java/lang/System.out:Ljava/io/PrintStream;
+        15: aload_2
+        16: aload_3
+        17: invokedynamic #126,  0            // InvokeDynamic #3:makeConcatWithConstants:(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+        22: invokevirtual #47                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+        25: return
+
+  private void readDatabase(storage.RdbReader$RdbInput) throws java.io.IOException;
+    Code:
+         0: aload_0
+         1: aload_1
+         2: invokevirtual #129                // Method readLength:(Lstorage/RdbReader$RdbInput;)J
+         5: lstore_2
+         6: getstatic     #33                 // Field java/lang/System.out:Ljava/io/PrintStream;
+         9: lload_2
+        10: invokedynamic #133,  0            // InvokeDynamic #4:makeConcatWithConstants:(J)Ljava/lang/String;
+        15: invokevirtual #47                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+        18: aload_1
+        19: invokevirtual #98                 // Method storage/RdbReader$RdbInput.readUnsignedByte:()I
+        22: istore        4
+        24: iload         4
+        26: sipush        251
+        29: if_icmpeq     57
+        32: new           #93                 // class java/io/IOException
+        35: dup
+        36: ldc           #136                // String Expected FB opcode but found 0x%02X
+        38: iconst_1
+        39: anewarray     #2                  // class java/lang/Object
+        42: dup
+        43: iconst_0
+        44: iload         4
+        46: invokestatic  #113                // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+        49: aastore
+        50: invokestatic  #118                // Method java/lang/String.format:(Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/String;
+        53: invokespecial #96                 // Method java/io/IOException."<init>":(Ljava/lang/String;)V
+        56: athrow
+        57: aload_0
+        58: aload_1
+        59: invokevirtual #129                // Method readLength:(Lstorage/RdbReader$RdbInput;)J
+        62: lstore        5
+        64: aload_0
+        65: aload_1
+        66: invokevirtual #129                // Method readLength:(Lstorage/RdbReader$RdbInput;)J
+        69: lstore        7
+        71: getstatic     #33                 // Field java/lang/System.out:Ljava/io/PrintStream;
+        74: lload         5
+        76: invokedynamic #138,  0            // InvokeDynamic #5:makeConcatWithConstants:(J)Ljava/lang/String;
+        81: invokevirtual #47                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+        84: getstatic     #33                 // Field java/lang/System.out:Ljava/io/PrintStream;
+        87: lload         7
+        89: invokedynamic #139,  0            // InvokeDynamic #6:makeConcatWithConstants:(J)Ljava/lang/String;
+        94: invokevirtual #47                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+        97: aload_1
+        98: invokevirtual #140                // Method storage/RdbReader$RdbInput.peekUnsignedByte:()I
+       101: istore        9
+       103: iload         9
+       105: sipush        254
+       108: if_icmpeq     119
+       111: iload         9
+       113: sipush        255
+       116: if_icmpne     120
+       119: return
+       120: aload_0
+       121: aload_1
+       122: invokevirtual #143                // Method readKeyValuePair:(Lstorage/RdbReader$RdbInput;)V
+       125: goto          97
+
+  private void readKeyValuePair(storage.RdbReader$RdbInput) throws java.io.IOException;
+    Code:
+         0: getstatic     #33                 // Field java/lang/System.out:Ljava/io/PrintStream;
+         3: aload_1
+         4: invokevirtual #146                // Method storage/RdbReader$RdbInput.getPosition:()I
+         7: ldc           #149                // String %02X
+         9: iconst_1
+        10: anewarray     #2                  // class java/lang/Object
+        13: dup
+        14: iconst_0
+        15: aload_1
+        16: invokevirtual #140                // Method storage/RdbReader$RdbInput.peekUnsignedByte:()I
+        19: invokestatic  #113                // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+        22: aastore
+        23: invokestatic  #118                // Method java/lang/String.format:(Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/String;
+        26: invokedynamic #151,  0            // InvokeDynamic #7:makeConcatWithConstants:(ILjava/lang/String;)Ljava/lang/String;
+        31: invokevirtual #47                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+        34: aconst_null
+        35: astore_2
+        36: aload_1
+        37: invokevirtual #140                // Method storage/RdbReader$RdbInput.peekUnsignedByte:()I
+        40: istore_3
+        41: iload_3
+        42: sipush        253
+        45: if_icmpne     94
+        48: getstatic     #33                 // Field java/lang/System.out:Ljava/io/PrintStream;
+        51: ldc           #154                // String DEBUG: ENTERED FD expiry branch
+        53: invokevirtual #47                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+        56: aload_1
+        57: invokevirtual #98                 // Method storage/RdbReader$RdbInput.readUnsignedByte:()I
+        60: pop
+        61: aload_0
+        62: aload_1
+        63: invokevirtual #156                // Method readUnsignedLittleEndianInt:(Lstorage/RdbReader$RdbInput;)J
+        66: lstore        4
+        68: getstatic     #33                 // Field java/lang/System.out:Ljava/io/PrintStream;
+        71: lload         4
+        73: invokedynamic #159,  0            // InvokeDynamic #8:makeConcatWithConstants:(J)Ljava/lang/String;
+        78: invokevirtual #47                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+        81: lload         4
+        83: ldc2_w        #160                // long 1000l
+        86: lmul
+        87: invokestatic  #162                // Method java/lang/Long.valueOf:(J)Ljava/lang/Long;
+        90: astore_2
+        91: goto          165
+        94: iload_3
+        95: sipush        252
+        98: if_icmpne     138
+       101: getstatic     #33                 // Field java/lang/System.out:Ljava/io/PrintStream;
+       104: ldc           #167                // String DEBUG: ENTERED FC expiry branch
+       106: invokevirtual #47                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+       109: aload_1
+       110: invokevirtual #98                 // Method storage/RdbReader$RdbInput.readUnsignedByte:()I
+       113: pop
+       114: aload_0
+       115: aload_1
+       116: invokevirtual #169                // Method readUnsignedLittleEndianLong:(Lstorage/RdbReader$RdbInput;)J
+       119: invokestatic  #162                // Method java/lang/Long.valueOf:(J)Ljava/lang/Long;
+       122: astore_2
+       123: getstatic     #33                 // Field java/lang/System.out:Ljava/io/PrintStream;
+       126: aload_2
+       127: invokedynamic #172,  0            // InvokeDynamic #9:makeConcatWithConstants:(Ljava/lang/Long;)Ljava/lang/String;
+       132: invokevirtual #47                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+       135: goto          165
+       138: getstatic     #33                 // Field java/lang/System.out:Ljava/io/PrintStream;
+       141: ldc           #149                // String %02X
+       143: iconst_1
+       144: anewarray     #2                  // class java/lang/Object
+       147: dup
+       148: iconst_0
+       149: iload_3
+       150: invokestatic  #113                // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+       153: aastore
+       154: invokestatic  #118                // Method java/lang/String.format:(Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/String;
+       157: invokedynamic #175,  0            // InvokeDynamic #10:makeConcatWithConstants:(Ljava/lang/String;)Ljava/lang/String;
+       162: invokevirtual #47                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+       165: aload_1
+       166: invokevirtual #98                 // Method storage/RdbReader$RdbInput.readUnsignedByte:()I
+       169: istore        4
+       171: getstatic     #33                 // Field java/lang/System.out:Ljava/io/PrintStream;
+       174: ldc           #149                // String %02X
+       176: iconst_1
+       177: anewarray     #2                  // class java/lang/Object
+       180: dup
+       181: iconst_0
+       182: iload         4
+       184: invokestatic  #113                // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+       187: aastore
+       188: invokestatic  #118                // Method java/lang/String.format:(Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/String;
+       191: invokedynamic #176,  0            // InvokeDynamic #11:makeConcatWithConstants:(Ljava/lang/String;)Ljava/lang/String;
+       196: invokevirtual #47                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+       199: iload         4
+       201: ifeq          219
+       204: new           #93                 // class java/io/IOException
+       207: dup
+       208: iload         4
+       210: invokedynamic #177,  0            // InvokeDynamic #12:makeConcatWithConstants:(I)Ljava/lang/String;
+       215: invokespecial #96                 // Method java/io/IOException."<init>":(Ljava/lang/String;)V
+       218: athrow
+       219: getstatic     #33                 // Field java/lang/System.out:Ljava/io/PrintStream;
+       222: ldc           #149                // String %02X
+       224: iconst_1
+       225: anewarray     #2                  // class java/lang/Object
+       228: dup
+       229: iconst_0
+       230: aload_1
+       231: invokevirtual #140                // Method storage/RdbReader$RdbInput.peekUnsignedByte:()I
+       234: invokestatic  #113                // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+       237: aastore
+       238: invokestatic  #118                // Method java/lang/String.format:(Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/String;
+       241: invokedynamic #180,  0            // InvokeDynamic #13:makeConcatWithConstants:(Ljava/lang/String;)Ljava/lang/String;
+       246: invokevirtual #47                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+       249: getstatic     #33                 // Field java/lang/System.out:Ljava/io/PrintStream;
+       252: ldc           #181                // String DEBUG: reading key
+       254: invokevirtual #47                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+       257: aload_0
+       258: aload_1
+       259: invokevirtual #122                // Method readString:(Lstorage/RdbReader$RdbInput;)Ljava/lang/String;
+       262: astore        5
+       264: getstatic     #33                 // Field java/lang/System.out:Ljava/io/PrintStream;
+       267: aload         5
+       269: invokedynamic #183,  0            // InvokeDynamic #14:makeConcatWithConstants:(Ljava/lang/String;)Ljava/lang/String;
+       274: invokevirtual #47                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+       277: getstatic     #33                 // Field java/lang/System.out:Ljava/io/PrintStream;
+       280: ldc           #184                // String DEBUG: reading value
+       282: invokevirtual #47                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+       285: aload_0
+       286: aload_1
+       287: invokevirtual #122                // Method readString:(Lstorage/RdbReader$RdbInput;)Ljava/lang/String;
+       290: astore        6
+       292: getstatic     #33                 // Field java/lang/System.out:Ljava/io/PrintStream;
+       295: aload         6
+       297: invokedynamic #186,  0            // InvokeDynamic #15:makeConcatWithConstants:(Ljava/lang/String;)Ljava/lang/String;
+       302: invokevirtual #47                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+       305: aload_2
+       306: ifnonnull     321
+       309: aload_0
+       310: getfield      #7                  // Field store:Lstorage/RedisStore;
+       313: aload         5
+       315: aload         6
+       317: invokevirtual #187                // Method storage/RedisStore.set:(Ljava/lang/String;Ljava/lang/String;)V
+       320: return
+       321: aload_2
+       322: invokevirtual #193                // Method java/lang/Long.longValue:()J
+       325: invokestatic  #197                // Method java/lang/System.currentTimeMillis:()J
+       328: lsub
+       329: lstore        7
+       331: lload         7
+       333: lconst_0
+       334: lcmp
+       335: ifgt          339
+       338: return
+       339: aload_0
+       340: getfield      #7                  // Field store:Lstorage/RedisStore;
+       343: aload         5
+       345: aload         6
+       347: lload         7
+       349: invokevirtual #200                // Method storage/RedisStore.set:(Ljava/lang/String;Ljava/lang/String;J)V
+       352: return
+
+  private java.lang.String readString(storage.RdbReader$RdbInput) throws java.io.IOException;
+    Code:
+         0: aload_1
+         1: invokevirtual #98                 // Method storage/RdbReader$RdbInput.readUnsignedByte:()I
+         4: istore_2
+         5: iload_2
+         6: sipush        192
+         9: iand
+        10: bipush        6
+        12: ishr
+        13: istore_3
+        14: iload_3
+        15: iconst_3
+        16: if_icmpeq     68
+        19: aload_0
+        20: aload_1
+        21: iload_2
+        22: invokevirtual #203                // Method readLengthFromFirstByte:(Lstorage/RdbReader$RdbInput;I)J
+        25: lstore        4
+        27: lload         4
+        29: ldc2_w        #207                // long 2147483647l
+        32: lcmp
+        33: ifle          46
+        36: new           #93                 // class java/io/IOException
+        39: dup
+        40: ldc           #209                // String String too large
+        42: invokespecial #96                 // Method java/io/IOException."<init>":(Ljava/lang/String;)V
+        45: athrow
+        46: aload_1
+        47: lload         4
+        49: l2i
+        50: invokevirtual #74                 // Method storage/RdbReader$RdbInput.readBytes:(I)[B
+        53: astore        6
+        55: new           #13                 // class java/lang/String
+        58: dup
+        59: aload         6
+        61: getstatic     #211                // Field java/nio/charset/StandardCharsets.UTF_8:Ljava/nio/charset/Charset;
+        64: invokespecial #84                 // Method java/lang/String."<init>":([BLjava/nio/charset/Charset;)V
+        67: areturn
+        68: iload_2
+        69: bipush        63
+        71: iand
+        72: istore        4
+        74: iload         4
+        76: tableswitch   { // 0 to 3
+                       0: 108
+                       1: 120
+                       2: 133
+                       3: 146
+                 default: 156
+            }
+       108: aload_1
+       109: invokevirtual #98                 // Method storage/RdbReader$RdbInput.readUnsignedByte:()I
+       112: istore        5
+       114: iload         5
+       116: invokestatic  #214                // Method java/lang/Integer.toString:(I)Ljava/lang/String;
+       119: areturn
+       120: aload_0
+       121: aload_1
+       122: invokevirtual #217                // Method readUnsignedLittleEndianShort:(Lstorage/RdbReader$RdbInput;)I
+       125: istore        6
+       127: iload         6
+       129: invokestatic  #214                // Method java/lang/Integer.toString:(I)Ljava/lang/String;
+       132: areturn
+       133: aload_0
+       134: aload_1
+       135: invokevirtual #156                // Method readUnsignedLittleEndianInt:(Lstorage/RdbReader$RdbInput;)J
+       138: lstore        7
+       140: lload         7
+       142: invokestatic  #221                // Method java/lang/Long.toString:(J)Ljava/lang/String;
+       145: areturn
+       146: new           #93                 // class java/io/IOException
+       149: dup
+       150: ldc           #223                // String LZF compressed strings are not supported yet
+       152: invokespecial #96                 // Method java/io/IOException."<init>":(Ljava/lang/String;)V
+       155: athrow
+       156: new           #93                 // class java/io/IOException
+       159: dup
+       160: iload         4
+       162: invokedynamic #225,  0            // InvokeDynamic #16:makeConcatWithConstants:(I)Ljava/lang/String;
+       167: invokespecial #96                 // Method java/io/IOException."<init>":(Ljava/lang/String;)V
+       170: athrow
+
+  private long readLength(storage.RdbReader$RdbInput) throws java.io.IOException;
+    Code:
+         0: aload_1
+         1: invokevirtual #98                 // Method storage/RdbReader$RdbInput.readUnsignedByte:()I
+         4: istore_2
+         5: iload_2
+         6: sipush        192
+         9: iand
+        10: bipush        6
+        12: ishr
+        13: istore_3
+        14: iload_3
+        15: ifne          24
+        18: iload_2
+        19: bipush        63
+        21: iand
+        22: i2l
+        23: lreturn
+        24: iload_3
+        25: iconst_1
+        26: if_icmpne     48
+        29: aload_1
+        30: invokevirtual #98                 // Method storage/RdbReader$RdbInput.readUnsignedByte:()I
+        33: istore        4
+        35: iload_2
+        36: bipush        63
+        38: iand
+        39: i2l
+        40: bipush        8
+        42: lshl
+        43: iload         4
+        45: i2l
+        46: lor
+        47: lreturn
+        48: iload_3
+        49: iconst_2
+        50: if_icmpne     59
+        53: aload_0
+        54: aload_1
+        55: invokevirtual #226                // Method readUnsignedBigEndianInt:(Lstorage/RdbReader$RdbInput;)J
+        58: lreturn
+        59: new           #93                 // class java/io/IOException
+        62: dup
+        63: ldc           #229                // String Expected RDB length but found special string encoding
+        65: invokespecial #96                 // Method java/io/IOException."<init>":(Ljava/lang/String;)V
+        68: athrow
+
+  private long readLengthFromFirstByte(storage.RdbReader$RdbInput, int) throws java.io.IOException;
+    Code:
+         0: iload_2
+         1: sipush        192
+         4: iand
+         5: bipush        6
+         7: ishr
+         8: istore_3
+         9: iload_3
+        10: ifne          19
+        13: iload_2
+        14: bipush        63
+        16: iand
+        17: i2l
+        18: lreturn
+        19: iload_3
+        20: iconst_1
+        21: if_icmpne     43
+        24: aload_1
+        25: invokevirtual #98                 // Method storage/RdbReader$RdbInput.readUnsignedByte:()I
+        28: istore        4
+        30: iload_2
+        31: bipush        63
+        33: iand
+        34: i2l
+        35: bipush        8
+        37: lshl
+        38: iload         4
+        40: i2l
+        41: lor
+        42: lreturn
+        43: iload_3
+        44: iconst_2
+        45: if_icmpne     54
+        48: aload_0
+        49: aload_1
+        50: invokevirtual #226                // Method readUnsignedBigEndianInt:(Lstorage/RdbReader$RdbInput;)J
+        53: lreturn
+        54: new           #93                 // class java/io/IOException
+        57: dup
+        58: ldc           #231                // String Invalid normal string length encoding
+        60: invokespecial #96                 // Method java/io/IOException."<init>":(Ljava/lang/String;)V
+        63: athrow
+
+  private long readUnsignedBigEndianInt(storage.RdbReader$RdbInput) throws java.io.IOException;
+    Code:
+         0: aload_1
+         1: invokevirtual #98                 // Method storage/RdbReader$RdbInput.readUnsignedByte:()I
+         4: i2l
+         5: lstore_2
+         6: aload_1
+         7: invokevirtual #98                 // Method storage/RdbReader$RdbInput.readUnsignedByte:()I
+        10: i2l
+        11: lstore        4
+        13: aload_1
+        14: invokevirtual #98                 // Method storage/RdbReader$RdbInput.readUnsignedByte:()I
+        17: i2l
+        18: lstore        6
+        20: aload_1
+        21: invokevirtual #98                 // Method storage/RdbReader$RdbInput.readUnsignedByte:()I
+        24: i2l
+        25: lstore        8
+        27: lload_2
+        28: bipush        24
+        30: lshl
+        31: lload         4
+        33: bipush        16
+        35: lshl
+        36: lor
+        37: lload         6
+        39: bipush        8
+        41: lshl
+        42: lor
+        43: lload         8
+        45: lor
+        46: lreturn
+
+  private long readUnsignedLittleEndianInt(storage.RdbReader$RdbInput) throws java.io.IOException;
+    Code:
+         0: aload_1
+         1: invokevirtual #98                 // Method storage/RdbReader$RdbInput.readUnsignedByte:()I
+         4: i2l
+         5: lstore_2
+         6: aload_1
+         7: invokevirtual #98                 // Method storage/RdbReader$RdbInput.readUnsignedByte:()I
+        10: i2l
+        11: lstore        4
+        13: aload_1
+        14: invokevirtual #98                 // Method storage/RdbReader$RdbInput.readUnsignedByte:()I
+        17: i2l
+        18: lstore        6
+        20: aload_1
+        21: invokevirtual #98                 // Method storage/RdbReader$RdbInput.readUnsignedByte:()I
+        24: i2l
+        25: lstore        8
+        27: lload_2
+        28: lload         4
+        30: bipush        8
+        32: lshl
+        33: lor
+        34: lload         6
+        36: bipush        16
+        38: lshl
+        39: lor
+        40: lload         8
+        42: bipush        24
+        44: lshl
+        45: lor
+        46: lreturn
+
+  private long readUnsignedLittleEndianLong(storage.RdbReader$RdbInput) throws java.io.IOException;
+    Code:
+         0: lconst_0
+         1: lstore_2
+         2: getstatic     #33                 // Field java/lang/System.out:Ljava/io/PrintStream;
+         5: ldc           #233                // String DEBUG: START reading 8-byte timestamp
+         7: invokevirtual #47                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+        10: iconst_0
+        11: istore        4
+        13: iload         4
+        15: bipush        8
+        17: if_icmpge     74
+        20: aload_1
+        21: invokevirtual #98                 // Method storage/RdbReader$RdbInput.readUnsignedByte:()I
+        24: istore        5
+        26: getstatic     #33                 // Field java/lang/System.out:Ljava/io/PrintStream;
+        29: iload         4
+        31: ldc           #149                // String %02X
+        33: iconst_1
+        34: anewarray     #2                  // class java/lang/Object
+        37: dup
+        38: iconst_0
+        39: iload         5
+        41: invokestatic  #113                // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+        44: aastore
+        45: invokestatic  #118                // Method java/lang/String.format:(Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/String;
+        48: invokedynamic #235,  0            // InvokeDynamic #17:makeConcatWithConstants:(ILjava/lang/String;)Ljava/lang/String;
+        53: invokevirtual #47                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+        56: lload_2
+        57: iload         5
+        59: i2l
+        60: bipush        8
+        62: iload         4
+        64: imul
+        65: lshl
+        66: lor
+        67: lstore_2
+        68: iinc          4, 1
+        71: goto          13
+        74: getstatic     #33                 // Field java/lang/System.out:Ljava/io/PrintStream;
+        77: lload_2
+        78: invokedynamic #236,  0            // InvokeDynamic #18:makeConcatWithConstants:(J)Ljava/lang/String;
+        83: invokevirtual #47                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+        86: lload_2
+        87: lreturn
+
+  private int readUnsignedLittleEndianShort(storage.RdbReader$RdbInput) throws java.io.IOException;
+    Code:
+         0: aload_1
+         1: invokevirtual #98                 // Method storage/RdbReader$RdbInput.readUnsignedByte:()I
+         4: istore_2
+         5: aload_1
+         6: invokevirtual #98                 // Method storage/RdbReader$RdbInput.readUnsignedByte:()I
+         9: istore_3
+        10: iload_2
+        11: iload_3
+        12: bipush        8
+        14: ishl
+        15: ior
+        16: ireturn
+}

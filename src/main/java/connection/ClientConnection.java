@@ -69,7 +69,8 @@ public class ClientConnection implements Runnable {
 
         private void handleCommand(
                         List<String> command,
-                        OutputStream outputStream) throws IOException {
+                        OutputStream outputStream)
+                        throws IOException {
 
                 if (command.isEmpty()) {
                         return;
@@ -80,5 +81,24 @@ public class ClientConnection implements Runnable {
                                 outputStream,
                                 store,
                                 context);
+
+                String commandName = command.get(0).toUpperCase();
+
+                if (isWriteCommand(commandName)) {
+
+                        store.propagateCommand(command);
+                }
+        }
+
+        private boolean isWriteCommand(
+                        String commandName) {
+
+                return commandName.equals("SET")
+                                || commandName.equals("DEL")
+                                || commandName.equals("INCR")
+                                || commandName.equals("XADD")
+                                || commandName.equals("RPUSH")
+                                || commandName.equals("LPUSH")
+                                || commandName.equals("LPOP");
         }
 }

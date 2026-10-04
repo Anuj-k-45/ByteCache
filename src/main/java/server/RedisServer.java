@@ -5,6 +5,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 
 import connection.ClientConnection;
+import storage.RdbReader;
 import storage.RedisStore;
 
 public class RedisServer {
@@ -23,14 +24,19 @@ public class RedisServer {
             int port,
             boolean replica,
             String masterHost,
-            int masterPort) {
+            int masterPort,
+            String dir,
+            String dbfilename) {
 
         this.port = port;
         this.replica = replica;
         this.masterHost = masterHost;
         this.masterPort = masterPort;
 
-        this.store = new RedisStore(replica);
+        this.store = new RedisStore(
+                replica,
+                dir,
+                dbfilename);
     }
 
     public boolean isReplica() {
@@ -40,6 +46,17 @@ public class RedisServer {
     public void start() {
 
         try {
+
+            /*
+             * Load the RDB snapshot before accepting
+             * any clients.
+             */
+            RdbReader rdbReader = new RdbReader(
+                    store,
+                    store.getDir(),
+                    store.getDbfilename());
+
+            rdbReader.load();
 
             serverSocket = new ServerSocket(port);
 
@@ -52,30 +69,43 @@ public class RedisServer {
 
             if (replica) {
 
-                ReplicationConnection replicationConnection =
-                                new ReplicationConnection(
-                                                masterHost,
-                                                masterPort,
-                                                port);
+                ReplicationConnection replicationConnection = new ReplicationConnection(
+                        masterHost,
+                        masterPort,
+                        port,
+                        store);
 
-                replicationConnection.connectAndHandshake();
+                Thread replicationThread = new Thread(
+                        () -> {
+
+                            try {
+
+                                replicationConnection
+                                        .connectAndHandshake();
+
+                            } catch (IOException e) {
+
+                                System.out.println(
+                                        "Replication error: "
+                                                + e.getMessage());
+                            }
+                        });
+
+                replicationThread.start();
             }
 
             while (true) {
 
-                Socket clientSocket =
-                        serverSocket.accept();
+                Socket clientSocket = serverSocket.accept();
 
                 System.out.println(
                         "Client connected!");
 
-                ClientConnection clientConnection =
-                        new ClientConnection(
-                                clientSocket,
-                                store);
+                ClientConnection clientConnection = new ClientConnection(
+                        clientSocket,
+                        store);
 
-                Thread clientThread =
-                        new Thread(clientConnection);
+                Thread clientThread = new Thread(clientConnection);
 
                 clientThread.start();
             }

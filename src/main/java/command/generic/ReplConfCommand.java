@@ -19,6 +19,34 @@ public class ReplConfCommand implements Command {
             ClientContext context)
             throws IOException {
 
+        /*
+         * Replica -> Master:
+         *
+         * REPLCONF ACK <offset>
+         *
+         * This is an acknowledgement, not a normal
+         * REPLCONF command that needs a response.
+         */
+        if (arguments.size() >= 3
+                && arguments.get(1).equalsIgnoreCase("ACK")) {
+
+            long acknowledgedOffset = Long.parseLong(arguments.get(2));
+
+            store.recordReplicaAck(
+                    outputStream,
+                    acknowledgedOffset);
+
+            return;
+        }
+
+        /*
+         * Handshake commands such as:
+         *
+         * REPLCONF listening-port 6380
+         * REPLCONF capa psync2
+         *
+         * still receive +OK.
+         */
         String response = "+OK\r\n";
 
         outputStream.write(

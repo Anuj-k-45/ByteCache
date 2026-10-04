@@ -5,21 +5,40 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+
+import command.CommandDispatcher;
+import connection.ClientContext;
+import connection.NullOutputStream;
+import protocol.RespParser;
+import storage.RedisStore;
 
 public class ReplicationConnection {
 
         private final String masterHost;
         private final int masterPort;
         private final int replicaPort;
+        private final RedisStore store;
+
+        private final RespParser parser;
+        private final CommandDispatcher commandDispatcher;
+        private final ClientContext context;
+
+        private long replicationOffset = 0;
 
         public ReplicationConnection(
                         String masterHost,
                         int masterPort,
-                        int replicaPort) {
+                        int replicaPort,
+                        RedisStore store) {
 
                 this.masterHost = masterHost;
                 this.masterPort = masterPort;
                 this.replicaPort = replicaPort;
+                this.store = store;
+                this.parser = new RespParser();
+                this.commandDispatcher = new CommandDispatcher();
+                this.context = new ClientContext();
         }
 
         public void connectAndHandshake()
@@ -128,7 +147,7 @@ public class ReplicationConnection {
                                 + "?\r\n"
                                 + "$2\r\n"
                                 + "-1\r\n";
-                                
+
                 outputStream.write(
                                 psync.getBytes(
                                                 StandardCharsets.UTF_8));
@@ -152,7 +171,9 @@ public class ReplicationConnection {
                                                 + rdbFile.length
                                                 + " bytes");
 
-                socket.close();
+                listenForReplicationCommands(
+                                inputStream,
+                                outputStream);
         }
 
         private void readResponse(
@@ -246,4 +267,116 @@ public class ReplicationConnection {
 
                 return rdbFile;
         }
+
+        private void listenForReplicationCommands(
+                        InputStream inputStream,
+                        OutputStream outputStream)
+                        throws IOException {
+
+                byte[] buffer = new byte[1024];
+
+                while (true) {
+
+                        int bytesRead = inputStream.read(buffer);
+
+                        if (bytesRead == -1) {
+
+                                System.out.println(
+                                                "Master closed replication connection");
+
+                                break;
+                        }
+
+                        parser.feed(buffer, bytesRead);
+
+                        var commands = parser.getCompleteCommands();
+
+                        for (var command : commands) {
+
+                                if (isGetAck(command)) {
+
+                                        // ACK uses offset BEFORE this command
+                                        sendAck(outputStream);
+
+                                        // Now this GETACK becomes part of processed history
+                                        replicationOffset += calculateRespSize(command);
+
+                                } else {
+
+                                        commandDispatcher.dispatch(
+                                                        command,
+                                                        new NullOutputStream(),
+                                                        store,
+                                                        context);
+
+                                        replicationOffset += calculateRespSize(command);
+                                }
+                        }
+                }
+        }
+
+        private boolean isGetAck(
+                        List<String> command) {
+
+                return command.size() >= 2
+                                && command.get(0).equalsIgnoreCase("REPLCONF")
+                                && command.get(1).equalsIgnoreCase("GETACK");
+        }
+
+        private void sendAck(
+                        OutputStream outputStream)
+                        throws IOException {
+
+                String offset = String.valueOf(replicationOffset);
+
+                String response = "*3\r\n"
+                                + "$8\r\n"
+                                + "REPLCONF\r\n"
+                                + "$3\r\n"
+                                + "ACK\r\n"
+                                + "$" + offset.length() + "\r\n"
+                                + offset
+                                + "\r\n";
+
+                outputStream.write(
+                                response.getBytes(StandardCharsets.UTF_8));
+
+                outputStream.flush();
+
+                System.out.println(
+                                "Sent REPLCONF ACK "
+                                                + replicationOffset);
+        }
+
+        private int calculateRespSize(
+                        List<String> command) {
+
+                int size = 0;
+
+                // *<number of elements>\r\n
+                size += 1;
+                size += String.valueOf(command.size()).length();
+                size += 2;
+
+                for (String argument : command) {
+
+                        byte[] bytes = argument.getBytes(StandardCharsets.UTF_8);
+
+                        // $<byte-length>\r\n
+                        size += 1;
+                        size += String.valueOf(bytes.length).length();
+                        size += 2;
+
+                        // actual data + \r\n
+                        size += bytes.length;
+                        size += 2;
+                }
+
+                return size;
+        }
+
+        public synchronized long getReplicationOffset() {
+                return replicationOffset;
+        }
+
 }

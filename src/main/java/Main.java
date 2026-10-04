@@ -10,6 +10,10 @@ public class Main {
         String masterHost = null;
         int masterPort = -1;
 
+        // RDB configuration
+        String dir = ".";
+        String dbfilename = "dump.rdb";
+
         for (int i = 0; i < args.length; i++) {
 
             if (args[i].equals("--port")) {
@@ -42,6 +46,26 @@ public class Main {
                 replica = true;
 
                 i++;
+
+            } else if (args[i].equals("--dir")) {
+
+                if (i + 1 >= args.length) {
+                    System.out.println("Missing directory path");
+                    return;
+                }
+
+                dir = args[i + 1];
+                i++;
+
+            } else if (args[i].equals("--dbfilename")) {
+
+                if (i + 1 >= args.length) {
+                    System.out.println("Missing dbfilename");
+                    return;
+                }
+
+                dbfilename = args[i + 1];
+                i++;
             }
         }
 
@@ -49,7 +73,9 @@ public class Main {
                 "DEBUG: port=" + port
                         + ", replica=" + replica
                         + ", masterHost=" + masterHost
-                        + ", masterPort=" + masterPort);
+                        + ", masterPort=" + masterPort
+                        + ", dir=" + dir
+                        + ", dbfilename=" + dbfilename);
 
         System.out.println(
                 "Logs from your program will appear here!");
@@ -58,7 +84,9 @@ public class Main {
                 port,
                 replica,
                 masterHost,
-                masterPort);
+                masterPort,
+                dir,
+                dbfilename);
 
         server.start();
     }

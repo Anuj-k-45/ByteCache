@@ -7,11 +7,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import command.generic.ConfigGetCommand;
 import command.generic.EchoCommand;
 import command.generic.InfoCommand;
+import command.generic.KeysCommand;
 import command.generic.PingCommand;
 import command.generic.ReplConfCommand;
 import command.generic.TypeCommand;
+import command.generic.WaitCommand;
 import command.list.BLPopCommand;
 import command.list.LLenCommand;
 import command.list.LPopCommand;
@@ -61,6 +64,9 @@ public class CommandDispatcher {
         commands.put("INFO", new InfoCommand());
         commands.put("REPLCONF", new ReplConfCommand());
         commands.put("PSYNC", new command.generic.PsyncCommand());
+        commands.put("WAIT", new WaitCommand());
+        commands.put("CONFIG", new ConfigGetCommand());
+        commands.put("KEYS", new KeysCommand());
     }
 
     public void dispatch(
